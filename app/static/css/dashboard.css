@@ -78,6 +78,28 @@ body {
     outline: none;
 }
 
+/* Специальные стили для диапазона дат */
+#customDateRange {
+    min-width: 300px;
+}
+
+#customDateRange .date-range-inputs {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+#customDateRange .date-range-inputs input {
+    flex: 1;
+    min-width: 140px;
+}
+
+#customDateRange .date-range-separator {
+    color: #6c757d;
+    font-weight: bold;
+    padding: 0 5px;
+}
+
 .apply-btn {
     background: linear-gradient(135deg, #667eea, #764ba2);
     color: white;
@@ -88,6 +110,7 @@ body {
     font-size: 14px;
     font-weight: 600;
     transition: transform 0.2s;
+    white-space: nowrap;
 }
 
 .apply-btn:hover {
@@ -104,6 +127,7 @@ body {
     font-size: 14px;
     font-weight: 600;
     transition: transform 0.2s;
+    white-space: nowrap;
 }
 
 .clear-btn:hover {
@@ -131,6 +155,7 @@ body {
     cursor: pointer;
     font-size: 14px;
     transition: all 0.3s;
+    white-space: nowrap;
 }
 
 .quick-btn.active {
@@ -330,9 +355,21 @@ tr:hover {
     .summary-cards {
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     }
+    
+    .filter-group {
+        gap: 15px;
+    }
+    
+    .filter-item {
+        min-width: 180px;
+    }
+    
+    #customDateRange {
+        min-width: 280px;
+    }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 992px) {
     .filter-group {
         flex-direction: column;
     }
@@ -341,6 +378,17 @@ tr:hover {
         min-width: 100%;
     }
     
+    #customDateRange {
+        min-width: 100%;
+    }
+    
+    .apply-btn, .clear-btn {
+        width: 100%;
+        margin-top: 10px;
+    }
+}
+
+@media (max-width: 768px) {
     .summary-cards {
         grid-template-columns: 1fr 1fr;
     }
@@ -361,12 +409,6 @@ tr:hover {
         padding: 8px 16px;
         font-size: 0.9em;
     }
-}
-
-@media (max-width: 480px) {
-    .summary-cards {
-        grid-template-columns: 1fr;
-    }
     
     .header h1 {
         font-size: 2em;
@@ -375,4 +417,110 @@ tr:hover {
     body {
         padding: 10px;
     }
+    
+    .filters-section {
+        padding: 20px;
+    }
+    
+    .results-section {
+        padding: 20px;
+    }
+}
+
+@media (max-width: 576px) {
+    .summary-cards {
+        grid-template-columns: 1fr;
+    }
+    
+    .filter-group {
+        gap: 10px;
+    }
+    
+    #customDateRange .date-range-inputs {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    #customDateRange .date-range-separator {
+        display: none;
+    }
+    
+    .quick-buttons {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .quick-btn {
+        text-align: center;
+    }
+    
+    .chart-container {
+        padding: 15px;
+    }
+    
+    .header {
+        padding: 20px;
+    }
+    
+    .header h1 {
+        font-size: 1.8em;
+    }
+}
+
+/* Специальные стили для мобильных устройств */
+@media (max-width: 480px) {
+    .dashboard {
+        border-radius: 10px;
+    }
+    
+    .filters-section {
+        padding: 15px;
+    }
+    
+    .results-section {
+        padding: 15px;
+    }
+    
+    .summary-card {
+        padding: 20px;
+    }
+    
+    .summary-card .value {
+        font-size: 1.8em;
+    }
+    
+    th, td {
+        padding: 10px 8px;
+    }
+    
+    .activity-badge {
+        padding: 3px 6px;
+        font-size: 0.75em;
+    }
+}
+
+/* Улучшения для полей ввода дат */
+input[type="date"] {
+    min-height: 44px;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+    padding: 4px;
+    cursor: pointer;
+}
+
+/* Улучшения для контейнера фильтров */
+.filter-group {
+    align-items: stretch;
+}
+
+.filter-item {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Гарантируем что кнопки не будут перекрывать контент */
+.apply-btn, .clear-btn {
+    align-self: flex-end;
+    height: fit-content;
 }

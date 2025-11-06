@@ -35,10 +35,10 @@
 
                 <div class="filter-item" id="customDateRange" style="display: none;">
                     <label>Диапазон дат:</label>
-                    <div style="display: flex; gap: 10px; align-items: center;">
-                        <input type="date" id="startDate" style="flex: 1;">
-                        <span>—</span>
-                        <input type="date" id="endDate" style="flex: 1;">
+                    <div class="date-range-inputs">
+                        <input type="date" id="startDate">
+                        <span class="date-range-separator">—</span>
+                        <input type="date" id="endDate">
                     </div>
                 </div>
 
@@ -53,8 +53,13 @@
                     </select>
                 </div>
 
-                <button class="apply-btn" onclick="applyFilters()">Применить фильтры</button>
-                <button class="clear-btn" onclick="clearCache()" title="Очистить кэш">🔄</button>
+                <div class="filter-item" style="min-width: auto;">
+                    <label style="visibility: hidden;">Действия</label>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="apply-btn" onclick="applyFilters()">Применить</button>
+                        <button class="clear-btn" onclick="clearCache()" title="Очистить кэш">🔄</button>
+                    </div>
+                </div>
             </div>
         </div>
 

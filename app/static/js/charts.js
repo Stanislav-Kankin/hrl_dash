@@ -50,20 +50,30 @@ class ActivityCharts {
 
     static createHourActivityChart() {
         const ctx = document.getElementById('hourActivityChart').getContext('2d');
-        const hours = Array.from({length: 24}, (_, i) => `${i}:00`);
+        
+        // Только рабочие часы с 06:00 до 19:00
+        const workHours = Array.from({length: 14}, (_, i) => {
+            const hour = i + 6; // Начинаем с 6 утра
+            return `${hour.toString().padStart(2, '0')}:00`;
+        });
         
         return new Chart(ctx, {
             type: 'line',
             data: {
-                labels: hours,
+                labels: workHours,
                 datasets: [{
                     label: 'Активности',
-                    data: new Array(24).fill(0),
+                    data: new Array(14).fill(0),
                     backgroundColor: 'rgba(255, 99, 132, 0.2)',
                     borderColor: 'rgba(255, 99, 132, 1)',
                     borderWidth: 2,
                     tension: 0.4,
-                    fill: true
+                    fill: true,
+                    pointBackgroundColor: 'rgba(255, 99, 132, 1)',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
                 }]
             },
             options: {
@@ -71,16 +81,42 @@ class ActivityCharts {
                 plugins: {
                     legend: {
                         display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: function(context) {
+                                return `Время: ${context[0].label}`;
+                            },
+                            label: function(context) {
+                                return `Активностей: ${context.parsed.y}`;
+                            }
+                        }
                     }
                 },
                 scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Часы рабочего дня'
+                        },
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)'
+                        }
+                    },
                     y: {
                         beginAtZero: true,
                         title: {
                             display: true,
                             text: 'Количество активностей'
+                        },
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)'
                         }
                     }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
                 }
             }
         });
@@ -128,14 +164,41 @@ class ActivityCharts {
                     borderColor: 'rgba(102, 126, 234, 1)',
                     borderWidth: 2,
                     tension: 0.4,
-                    fill: true
+                    fill: true,
+                    pointBackgroundColor: 'rgba(102, 126, 234, 1)',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
                 }]
             },
             options: {
                 responsive: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `Активностей: ${context.parsed.y}`;
+                            }
+                        }
+                    }
+                },
                 scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Даты'
+                        }
+                    },
                     y: {
-                        beginAtZero: true
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Количество активностей'
+                        }
                     }
                 }
             }
@@ -148,21 +211,31 @@ class ActivityCharts {
             return;
         }
 
-        console.log('Updating charts with:', statistics);
+        console.log('Updating charts with statistics:', statistics);
 
         // Обновляем график по дням недели
         if (this.charts.weekActivity) {
             const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
             const weekData = weekDays.map(day => statistics.weekday_stats?.[day] || 0);
             
+            console.log('Week data:', weekData);
+            
             this.charts.weekActivity.data.datasets[0].data = weekData;
             this.charts.weekActivity.update();
         }
 
-        // Обновляем график по часам
+        // Обновляем график по часам (только рабочие часы 06:00-19:00)
         if (this.charts.hourActivity && statistics.hourly_stats) {
-            const hourData = Object.values(statistics.hourly_stats);
-            this.charts.hourActivity.data.datasets[0].data = hourData;
+            // Создаем массив данных только для рабочих часов (6-19)
+            const workHourData = [];
+            for (let i = 6; i <= 19; i++) {
+                const hourKey = i.toString().padStart(2, '0');
+                workHourData.push(statistics.hourly_stats[hourKey] || 0);
+            }
+            
+            console.log('Work hour data (06:00-19:00):', workHourData);
+            
+            this.charts.hourActivity.data.datasets[0].data = workHourData;
             this.charts.hourActivity.update();
         }
 
@@ -180,6 +253,8 @@ class ActivityCharts {
                  (statistics.type_stats?.['1'] || 0)) // Другие
             ];
             
+            console.log('Type data:', typeData);
+            
             this.charts.typeDistribution.data.datasets[0].data = typeData;
             this.charts.typeDistribution.update();
         }
@@ -191,6 +266,9 @@ class ActivityCharts {
                 return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
             });
             const dailyData = statistics.daily_stats.map(day => day.total);
+            
+            console.log('Daily labels:', dailyLabels);
+            console.log('Daily data:', dailyData);
             
             this.charts.dailyActivity.data.labels = dailyLabels;
             this.charts.dailyActivity.data.datasets[0].data = dailyData;

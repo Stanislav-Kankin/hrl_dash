@@ -29,25 +29,46 @@ document.addEventListener('DOMContentLoaded', async function () {
 
 function initializeEventListeners() {
     // Обработчик изменения периода
-    document.getElementById('periodSelect').addEventListener('change', function () {
-        const customRange = document.getElementById('customDateRange');
-        if (this.value === 'custom') {
-            customRange.style.display = 'block';
-            // Устанавливаем даты по умолчанию
-            const endDate = new Date();
-            const startDate = new Date();
-            startDate.setDate(startDate.getDate() - 30);
-            
-            document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
-            document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
-        } else {
-            customRange.style.display = 'none';
-        }
-    });
+    const periodSelect = document.getElementById('periodSelect');
+    if (periodSelect) {
+        periodSelect.addEventListener('change', function () {
+            const customRange = document.getElementById('customDateRange');
+            if (this.value === 'custom') {
+                customRange.style.display = 'block';
+                // Устанавливаем даты по умолчанию
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setDate(startDate.getDate() - 30);
+                
+                document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
+                document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
+            } else {
+                customRange.style.display = 'none';
+            }
+        });
+    }
 
-    // Enter в полях дат
-    document.getElementById('startDate').addEventListener('change', applyFilters);
-    document.getElementById('endDate').addEventListener('change', applyFilters);
+    // Обработчики для полей дат
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    
+    if (startDateInput) {
+        startDateInput.addEventListener('change', function() {
+            // Автоматически применяем фильтры при выборе дат
+            if (document.getElementById('periodSelect').value === 'custom') {
+                applyFilters();
+            }
+        });
+    }
+    
+    if (endDateInput) {
+        endDateInput.addEventListener('change', function() {
+            // Автоматически применяем фильтры при выборе дат
+            if (document.getElementById('periodSelect').value === 'custom') {
+                applyFilters();
+            }
+        });
+    }
 }
 
 async function initializeDashboard() {
@@ -277,6 +298,12 @@ async function applyFilters() {
             if (startDate && endDate) {
                 filters.start_date = startDate;
                 filters.end_date = endDate;
+                
+                // Проверяем что начальная дата не больше конечной
+                if (new Date(startDate) > new Date(endDate)) {
+                    alert('Начальная дата не может быть больше конечной даты');
+                    return;
+                }
             } else {
                 alert('Пожалуйста, выберите начальную и конечную даты');
                 return;
@@ -284,6 +311,8 @@ async function applyFilters() {
         } else {
             filters.days = parseInt(period);
         }
+
+        console.log('Applying filters:', filters);
 
         const statsData = await loadDetailedStats(filters);
         if (statsData) {
