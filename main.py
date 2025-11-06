@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timedelta
@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Bitrix24 Analytics Dashboard", version="1.0")
 load_dotenv()
-bitrix_service = BitrixService()
 
 # Монтируем статические файлы из папки app/static
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -28,6 +27,7 @@ async def read_root():
 async def get_users_list():
     """Список сотрудников для фильтров"""
     try:
+        bitrix_service = BitrixService()
         users = await bitrix_service.get_presales_users()
         
         if users is None:
@@ -55,28 +55,40 @@ async def get_users_list():
 
 @app.get("/api/stats/detailed")
 async def get_detailed_stats(
-    days: int = 30,
-    user_ids: Optional[str] = None,
-    activity_type: Optional[str] = None
+    days: int = Query(30, description="Период в днях"),
+    user_ids: Optional[str] = Query(None, description="ID пользователей через запятую"),
+    activity_type: Optional[str] = Query(None, description="Тип активности")
 ):
     """Детальная статистика по сотрудникам"""
     try:
-        user_ids_list = user_ids.split(',') if user_ids else None
-        activity_type_list = activity_type.split(',') if activity_type else None
+        bitrix_service = BitrixService()
         
-        logger.info(f"Fetching activities with days={days}, users={user_ids_list}, types={activity_type_list}")
+        # Парсим параметры
+        user_ids_list = user_ids.split(',') if user_ids else []
+        activity_type_list = [activity_type] if activity_type and activity_type != 'all' else None
         
+        logger.info(f"Fetching stats: days={days}, users={user_ids_list}, types={activity_type_list}")
+        
+        # Получаем активности
         activities = await bitrix_service.get_activities(
             days=days, 
-            user_ids=user_ids_list,
+            user_ids=user_ids_list if user_ids_list else None,
             activity_types=activity_type_list
         )
         
         if activities is None:
-            return {"error": "Не удалось получить активности"}
+            activities = []
         
+        # Получаем пользователей
         users = await bitrix_service.get_presales_users()
-        user_map = {user['ID']: user for user in users} if users else {}
+        if users is None:
+            users = []
+        
+        # Фильтруем пользователей если указаны конкретные ID
+        if user_ids_list:
+            users = [user for user in users if str(user.get('ID')) in user_ids_list]
+        
+        user_map = {str(user['ID']): user for user in users}
         
         # Обрабатываем статистику
         user_stats = process_user_stats_detailed(activities, user_map, days)
@@ -94,14 +106,14 @@ async def get_detailed_stats(
         
     except Exception as e:
         logger.error(f"Error in detailed stats: {str(e)}")
-        return {"error": str(e)}
+        return {"error": str(e), "user_stats": []}
 
 def process_user_stats_detailed(activities: List[Dict], user_map: Dict, period_days: int) -> List[Dict]:
     """Детальная обработка статистики по пользователям"""
     user_stats = {}
     
     for activity in activities:
-        user_id = activity.get('AUTHOR_ID')
+        user_id = str(activity.get('AUTHOR_ID'))
         if not user_id:
             continue
             
@@ -123,10 +135,11 @@ def process_user_stats_detailed(activities: List[Dict], user_map: Dict, period_d
         
         user = user_stats[user_id]
         activity_date = activity.get('CREATED', '')[:10]  # YYYY-MM-DD
-        user["days"].add(activity_date)
+        if activity_date:
+            user["days"].add(activity_date)
         
         # Классифицируем активность
-        type_id = activity.get('TYPE_ID', '')
+        type_id = str(activity.get('TYPE_ID', ''))
         if type_id == "2":
             user["calls"] += 1
         elif type_id == "6":
@@ -149,10 +162,13 @@ def process_user_stats_detailed(activities: List[Dict], user_map: Dict, period_d
     # Преобразуем в список и добавляем вычисляемые поля
     stats_list = []
     for user_id, stats in user_stats.items():
+        last_activity = stats["last_activity"]
+        last_activity_date = last_activity[:10] if last_activity else "Нет данных"
+        
         stats_list.append({
             **stats,
             "days_count": len(stats["days"]),
-            "last_activity_date": stats["last_activity"][:10] if stats["last_activity"] else "Нет данных"
+            "last_activity_date": last_activity_date
         })
     
     return stats_list
@@ -160,13 +176,18 @@ def process_user_stats_detailed(activities: List[Dict], user_map: Dict, period_d
 @app.get("/api/connection-test")
 async def test_connection():
     """Тест подключения к Bitrix24"""
-    is_connected = await bitrix_service.test_connection()
-    
-    return {
-        "connected": is_connected,
-        "webhook_configured": bool(os.getenv("BITRIX_WEBHOOK_URL")),
-        "message": "Подключение успешно" if is_connected else "Требуется настройка подключения"
-    }
+    try:
+        bitrix_service = BitrixService()
+        is_connected = await bitrix_service.test_connection()
+        
+        return {
+            "connected": is_connected,
+            "webhook_configured": bool(os.getenv("BITRIX_WEBHOOK_URL")),
+            "message": "Подключение успешно" if is_connected else "Требуется настройка подключения"
+        }
+    except Exception as e:
+        logger.error(f"Connection test error: {str(e)}")
+        return {"connected": False, "error": str(e)}
 
 @app.get("/api/health")
 async def health_check():
@@ -177,10 +198,85 @@ async def health_check():
         "version": "1.0"
     }
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Закрываем сессию при завершении"""
-    await bitrix_service.close_session()
+@app.get("/api/debug/users")
+async def debug_users():
+    """Отладочный эндпоинт для проверки пользователей"""
+    try:
+        bitrix_service = BitrixService()
+        
+        # Получаем всех пользователей
+        all_users = await bitrix_service.get_users(only_active=True)
+        
+        # Получаем пресейл пользователей
+        presales_users = await bitrix_service.get_presales_users()
+        
+        return {
+            "total_users": len(all_users) if all_users else 0,
+            "total_presales_users": len(presales_users) if presales_users else 0,
+            "all_users": [
+                {
+                    "ID": user['ID'],
+                    "NAME": user.get('NAME', ''),
+                    "LAST_NAME": user.get('LAST_NAME', ''),
+                    "WORK_POSITION": user.get('WORK_POSITION', ''),
+                    "EMAIL": user.get('EMAIL', ''),
+                    "ACTIVE": user.get('ACTIVE', '')
+                } for user in (all_users or [])[:10]  # Ограничиваем для отладки
+            ],
+            "presales_users": [
+                {
+                    "ID": user['ID'],
+                    "NAME": user.get('NAME', ''),
+                    "LAST_NAME": user.get('LAST_NAME', ''),
+                    "WORK_POSITION": user.get('WORK_POSITION', ''),
+                    "EMAIL": user.get('EMAIL', '')
+                } for user in (presales_users or [])
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in debug users: {str(e)}")
+        return {"error": str(e)}
+
+@app.get("/api/find-users")
+async def find_users():
+    """Найти пользователей по имени"""
+    try:
+        bitrix_service = BitrixService()
+        all_users = await bitrix_service.get_users(only_active=True)
+        
+        if not all_users:
+            return {"error": "No users found"}
+        
+        # Ищем нужных сотрудников
+        target_names = [
+            "Безина Ольга", "Фатюхина Полина", "Агапова Анастасия",
+            "Некрасова Елена", "Вахрушева Наталия", "Прокофьева Дарья"
+        ]
+        
+        found_users = []
+        for user in all_users:
+            full_name = f"{user.get('NAME', '')} {user.get('LAST_NAME', '')}"
+            for target_name in target_names:
+                if target_name.lower() in full_name.lower():
+                    found_users.append({
+                        "ID": user['ID'],
+                        "NAME": user.get('NAME', ''),
+                        "LAST_NAME": user.get('LAST_NAME', ''),
+                        "WORK_POSITION": user.get('WORK_POSITION', ''),
+                        "FULL_NAME": full_name
+                    })
+                    break
+        
+        return {
+            "target_names": target_names,
+            "found_users": found_users,
+            "message": f"Найдено {len(found_users)} из {len(target_names)} сотрудников"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in find-users: {str(e)}")
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn

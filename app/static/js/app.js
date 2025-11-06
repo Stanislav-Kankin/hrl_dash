@@ -15,7 +15,7 @@ async function loadUsersList() {
     try {
         showLoading('resultsBody', 'Загрузка сотрудников...');
         const data = await BitrixAPI.getUsersList();
-        
+
         if (data.users) {
             allUsers = data.users;
             updateUserSelect();
@@ -34,11 +34,11 @@ async function loadDetailedStats(filters = {}) {
     try {
         showLoading('resultsBody', 'Загрузка статистики...');
         const data = await BitrixAPI.getDetailedStats(filters);
-        
+
         if (data.error) {
             throw new Error(data.error);
         }
-        
+
         return data;
     } catch (error) {
         console.error('Ошибка загрузки статистики:', error);
@@ -50,13 +50,13 @@ async function loadDetailedStats(filters = {}) {
 async function testConnection() {
     try {
         const data = await BitrixAPI.testConnection();
-        
+
         if (data.connected) {
             alert('✅ Подключение к Bitrix24 успешно!');
         } else {
             alert('❌ Ошибка подключения к Bitrix24. Проверьте настройки.');
         }
-        
+
         return data;
     } catch (error) {
         alert('❌ Ошибка подключения: ' + error.message);
@@ -68,16 +68,16 @@ async function testConnection() {
 function updateUserSelect() {
     const select = document.getElementById('employeesSelect');
     const currentValue = select.value;
-    
+
     select.innerHTML = '<option value="all">Все сотрудники</option>';
-    
+
     allUsers.forEach(user => {
         const option = document.createElement('option');
         option.value = user.ID;
         option.textContent = `${user.NAME} ${user.LAST_NAME}${user.WORK_POSITION ? ` (${user.WORK_POSITION})` : ''}`;
         select.appendChild(option);
     });
-    
+
     // Восстанавливаем выбранное значение если нужно
     if (currentValue && Array.from(select.options).some(opt => opt.value === currentValue)) {
         select.value = currentValue;
@@ -101,19 +101,19 @@ function displayUserStats(statsData) {
     // Обновляем summary cards
     activeUsersElem.textContent = statsData.active_users || 0;
     totalActivitiesElem.textContent = statsData.total_activities || 0;
-    
+
     // Считаем общее количество звонков и комментариев
     let totalCalls = 0;
     let totalComments = 0;
-    
+
     statsData.user_stats.forEach(user => {
         totalCalls += user.calls || 0;
         totalComments += user.comments || 0;
     });
-    
+
     totalCallsElem.textContent = totalCalls;
     totalCommentsElem.textContent = totalComments;
-    
+
     const period = document.getElementById('periodSelect').value;
     periodMessageElem.textContent = `за ${period} дней`;
     usersMessageElem.textContent = `Найдено ${statsData.active_users || 0} сотрудников`;
@@ -125,7 +125,7 @@ function displayUserStats(statsData) {
     }
 
     tbody.innerHTML = '';
-    
+
     statsData.user_stats.forEach(user => {
         const row = document.createElement('tr');
         row.innerHTML = `
@@ -176,31 +176,31 @@ function showUserDetails(userId) {
     });
 
     // Сортируем дни по убыванию
-    const sortedDays = Object.keys(activitiesByDay).sort((a, b) => 
+    const sortedDays = Object.keys(activitiesByDay).sort((a, b) =>
         new Date(b.split('.').reverse().join('-')) - new Date(a.split('.').reverse().join('-'))
     );
 
     sortedDays.forEach(date => {
         const dayGroup = document.createElement('div');
         dayGroup.className = 'day-group';
-        
+
         let dayHTML = `<div class="day-header">📅 ${date}</div>`;
-        
+
         // Сортируем активности по времени
         activitiesByDay[date].sort((a, b) => new Date(a.CREATED) - new Date(b.CREATED));
-        
+
         activitiesByDay[date].forEach(activity => {
             const time = new Date(activity.CREATED).toLocaleTimeString('ru-RU', {
                 hour: '2-digit',
                 minute: '2-digit'
             });
-            
+
             const activityType = ACTIVITY_TYPES[activity.TYPE_ID] || { name: 'Другое', class: '' };
-            const description = activity.DESCRIPTION ? 
-                activity.DESCRIPTION.replace(/\n/g, '<br>').substring(0, 150) + 
-                (activity.DESCRIPTION.length > 150 ? '...' : '') : 
+            const description = activity.DESCRIPTION ?
+                activity.DESCRIPTION.replace(/\n/g, '<br>').substring(0, 150) +
+                (activity.DESCRIPTION.length > 150 ? '...' : '') :
                 'Нет описания';
-            
+
             dayHTML += `
                 <div class="activity-item">
                     <span class="activity-time">${time}</span>
@@ -209,7 +209,7 @@ function showUserDetails(userId) {
                 </div>
             `;
         });
-        
+
         dayGroup.innerHTML = dayHTML;
         panel.appendChild(dayGroup);
     });
@@ -233,7 +233,7 @@ async function applyFilters() {
     if (statsData) {
         displayUserStats(statsData);
     }
-    
+
     // Скрываем панель детализации при применении новых фильтров
     document.getElementById('detailsPanel').classList.remove('active');
 }
@@ -244,7 +244,7 @@ function toggleQuickAction(action) {
     event.target.classList.add('active');
 
     let activityType = 'all';
-    switch(action) {
+    switch (action) {
         case 'calls':
             activityType = '2';
             break;
@@ -258,7 +258,7 @@ function toggleQuickAction(action) {
             activityType = '1';
             break;
     }
-    
+
     document.getElementById('activityTypeSelect').value = activityType;
     applyFilters();
 }
@@ -274,14 +274,65 @@ function showError(elementId, message) {
     element.innerHTML = `<tr><td colspan="8" style="color: red; text-align: center; padding: 20px;">${message}</td></tr>`;
 }
 
+// Функция отладки пользователей
+async function debugUsers() {
+    try {
+        const response = await fetch('/api/debug/users');
+        const data = await response.json();
+
+        console.log('Debug users data:', data);
+
+        let message = `Всего пользователей: ${data.total_users}\n`;
+        message += `Пресейл пользователей: ${data.total_presales_users}\n\n`;
+
+        if (data.presales_users) {
+            message += "Пресейл сотрудники:\n";
+            data.presales_users.forEach(user => {
+                message += `- ${user.NAME} ${user.LAST_NAME} (${user.WORK_POSITION || 'нет должности'}) - ID: ${user.ID}\n`;
+            });
+        }
+
+        alert(message);
+
+    } catch (error) {
+        alert('Ошибка отладки: ' + error.message);
+    }
+}
+
+// Функция поиска пользователей
+async function findUsers() {
+    try {
+        const response = await fetch('/api/find-users');
+        const data = await response.json();
+
+        console.log('Find users data:', data);
+
+        let message = `Найдено ${data.found_users.length} из ${data.target_names.length} сотрудников\n\n`;
+
+        if (data.found_users.length > 0) {
+            message += "Найденные сотрудники:\n";
+            data.found_users.forEach(user => {
+                message += `- ${user.FULL_NAME} (${user.WORK_POSITION || 'нет должности'}) - ID: ${user.ID}\n`;
+            });
+        } else {
+            message += "Сотрудники не найдены!\n";
+        }
+
+        alert(message);
+
+    } catch (error) {
+        alert('Ошибка поиска: ' + error.message);
+    }
+}
+
 // Инициализация при загрузке
-document.addEventListener('DOMContentLoaded', async function() {
+document.addEventListener('DOMContentLoaded', async function () {
     // Загружаем список сотрудников
     await loadUsersList();
-    
+
     // Загружаем начальную статистику
     await applyFilters();
-    
+
     // Тестируем подключение
     const connection = await testConnection();
     if (!connection.connected) {
