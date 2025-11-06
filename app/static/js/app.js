@@ -93,14 +93,17 @@ function displayUserStats(statsData) {
     const tbody = document.getElementById('resultsBody');
     const activeUsersElem = document.getElementById('activeUsers');
     const totalActivitiesElem = document.getElementById('totalActivities');
-    const totalCallsElem = document.getElementById('totalCalls');
-    const totalCommentsElem = document.getElementById('totalComments');
     const periodMessageElem = document.getElementById('periodMessage');
     const usersMessageElem = document.getElementById('usersMessage');
 
     // Обновляем summary cards
     activeUsersElem.textContent = statsData.active_users || 0;
     totalActivitiesElem.textContent = statsData.total_activities || 0;
+
+    // Используем кастомное сообщение о периоде если есть
+    const periodMessage = statsData.period_message || `за ${statsData.period_days || 30} дней`;
+    periodMessageElem.textContent = periodMessage;
+    usersMessageElem.textContent = `Найдено ${statsData.active_users || 0} сотрудников`;
 
     // Считаем общее количество звонков и комментариев
     let totalCalls = 0;
@@ -298,6 +301,45 @@ async function debugUsers() {
         alert('Ошибка отладки: ' + error.message);
     }
 }
+document.getElementById('periodSelect').addEventListener('change', function () {
+    const customRange = document.getElementById('customDateRange');
+    if (this.value === 'custom') {
+        customRange.style.display = 'block';
+    } else {
+        customRange.style.display = 'none';
+    }
+});
+
+// Обновленная функция applyFilters
+async function applyFilters() {
+    const periodSelect = document.getElementById('periodSelect');
+    const period = periodSelect.value;
+    const employeeFilter = document.getElementById('employeesSelect').value;
+    const activityTypeFilter = document.getElementById('activityTypeSelect').value;
+
+    const filters = {
+        days: period === 'custom' ? 30 : parseInt(period), // временно
+        user_ids: employeeFilter === 'all' ? [] : [employeeFilter],
+        activity_type: activityTypeFilter === 'all' ? null : activityTypeFilter
+    };
+
+    // Если выбран кастомный период
+    if (period === 'custom') {
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        if (startDate && endDate) {
+            filters.start_date = startDate;
+            filters.end_date = endDate;
+        }
+    }
+
+    const statsData = await loadDetailedStats(filters);
+    if (statsData) {
+        displayUserStats(statsData);
+    }
+
+    document.getElementById('detailsPanel').classList.remove('active');
+}
 
 // Функция поиска пользователей
 async function findUsers() {
@@ -339,3 +381,5 @@ document.addEventListener('DOMContentLoaded', async function () {
         console.warn('Внимание: подключение к Bitrix24 не настроено');
     }
 });
+
+

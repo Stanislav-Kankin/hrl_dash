@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bitrix24 Analytics Dashboard</title>
     <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
+
 <body>
     <div class="dashboard">
         <div class="header">
@@ -21,7 +23,24 @@
                         <option value="all">Все сотрудники</option>
                     </select>
                 </div>
-                
+                <div class="filter-item">
+                    <label>Период:</label>
+                    <select id="periodSelect">
+                        <option value="7">7 дней</option>
+                        <option value="30" selected>30 дней</option>
+                        <option value="90">90 дней</option>
+                        <option value="custom">Произвольный период</option>
+                    </select>
+                </div>
+
+                <div class="filter-item" id="customDateRange" style="display: none;">
+                    <label>Произвольный период:</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="date" id="startDate" placeholder="Начальная дата">
+                        <input type="date" id="endDate" placeholder="Конечная дата">
+                    </div>
+                </div>
+
                 <div class="filter-item">
                     <label>Период:</label>
                     <select id="periodSelect">
@@ -114,4 +133,5 @@
     <script src="/static/js/api.js"></script>
     <script src="/static/js/app.js"></script>
 </body>
+
 </html>

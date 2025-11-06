@@ -70,14 +70,22 @@ class BitrixService:
             return None
 
     async def get_activities(self, days: int = 30, user_ids: List[str] = None, activity_types: List[str] = None) -> Optional[List[Dict]]:
-        """Получить активности с фильтрами и пагинацией"""
+        """Получить ВСЕ активности с фильтрами и пагинацией"""
         try:
+            # Если не указаны пользователи - используем ТОЛЬКО пресейлов
+            if not user_ids:
+                presales_users = await self.get_presales_users()
+                if presales_users:
+                    user_ids = [str(user['ID']) for user in presales_users]
+            
             # Рассчитываем дату начала периода
             start_date = datetime.now() - timedelta(days=days)
             start_date_str = start_date.strftime("%Y-%m-%dT%H:%M:%S")
             
             all_activities = []
             start = 0
+            
+            logger.info(f"Fetching ALL activities for {len(user_ids) if user_ids else 'all'} users, days={days}")
             
             while True:
                 # Параметры запроса с пагинацией
@@ -103,8 +111,6 @@ class BitrixService:
                 params['select[4]'] = 'TYPE_ID'
                 params['select[5]'] = 'SUBJECT'
                 
-                logger.info(f"Requesting activities with params: {params}")
-                
                 # Делаем запрос к Bitrix24
                 activities = await self.make_bitrix_request("crm.activity.list", params)
                 
@@ -125,15 +131,67 @@ class BitrixService:
                     
                 start += 50
                 
-                # Добавляем небольшую задержку чтобы не перегружать API
+                # Небольшая задержка чтобы не перегружать API
                 import asyncio
                 await asyncio.sleep(0.1)
             
-            logger.info(f"Total activities received: {len(all_activities)}")
+            logger.info(f"✅ Total activities received: {len(all_activities)}")
             return all_activities
             
         except Exception as e:
             logger.error(f"Error getting activities: {str(e)}")
+            return None
+
+    async def get_calls(self, days: int = 30, user_ids: List[str] = None) -> Optional[List[Dict]]:
+        """Получить данные о звонках"""
+        try:
+            start_date = datetime.now() - timedelta(days=days)
+            start_date_str = start_date.strftime("%Y-%m-%dT%H:%M:%S")
+            
+            params = {
+                'filter[>=CALL_START_DATE]': start_date_str
+            }
+            
+            if user_ids:
+                params['filter[PORTAL_USER_ID]'] = user_ids
+            
+            params['select[0]'] = 'ID'
+            params['select[1]'] = 'CALL_TYPE'
+            params['select[2]'] = 'CALL_DURATION'
+            params['select[3]'] = 'CALL_START_DATE'
+            params['select[4]'] = 'PORTAL_USER_ID'
+            params['select[5]'] = 'PHONE_NUMBER'
+            
+            calls = await self.make_bitrix_request("voximplant.statistic.get", params)
+            return calls
+            
+        except Exception as e:
+            logger.error(f"Error getting calls: {str(e)}")
+            return None
+
+    async def get_presales_users(self) -> Optional[List[Dict]]:
+        """Получает список сотрудников пресейла - ОБНОВЛЕННАЯ ВЕРСИЯ"""
+        try:
+            # Жестко задаем ID всех найденных пресейл сотрудников
+            known_presales_ids = [
+                '8860', '8988', '17087', '17919', '17395', '18065',  # Из вашего запроса
+                '14255',  # Из данных о звонках
+            ]
+            
+            presales_users = []
+            
+            # Получаем информацию о каждом сотруднике по ID
+            for user_id in known_presales_ids:
+                user = await self.get_user_by_id(user_id)
+                if user:
+                    presales_users.append(user)
+                    logger.info(f"Found presales user: {user.get('NAME')} {user.get('LAST_NAME')} - {user.get('WORK_POSITION', '')} - ID: {user.get('ID')}")
+            
+            logger.info(f"Final presales users count: {len(presales_users)}")
+            return presales_users
+            
+        except Exception as e:
+            logger.error(f"Error getting presales users: {str(e)}")
             return None
 
     async def get_user_by_id(self, user_id: str) -> Optional[Dict]:

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from app.services.bitrix_service import BitrixService
 from dotenv import load_dotenv
 from typing import List, Optional, Dict, Any
+
 import os
 import logging
 
@@ -53,13 +54,22 @@ async def get_users_list():
         logger.error(f"Error in users-list: {str(e)}")
         return {"users": [], "error": str(e)}
 
+from datetime import datetime, timedelta
+from fastapi import FastAPI, Query
+from typing import List, Optional, Dict, Any
+import logging
+
+# ... остальной код ...
+
 @app.get("/api/stats/detailed")
 async def get_detailed_stats(
     days: int = Query(30, description="Период в днях"),
+    start_date: Optional[str] = Query(None, description="Начальная дата (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Конечная дата (YYYY-MM-DD)"),
     user_ids: Optional[str] = Query(None, description="ID пользователей через запятую"),
     activity_type: Optional[str] = Query(None, description="Тип активности")
 ):
-    """Детальная статистика по сотрудникам"""
+    """Детальная статистика по сотрудникам с выбором диапазона дат"""
     try:
         bitrix_service = BitrixService()
         
@@ -67,12 +77,23 @@ async def get_detailed_stats(
         user_ids_list = user_ids.split(',') if user_ids else []
         activity_type_list = [activity_type] if activity_type and activity_type != 'all' else None
         
-        logger.info(f"Fetching stats: days={days}, users={user_ids_list}, types={activity_type_list}")
+        # Определяем период
+        if start_date and end_date:
+            # Используем указанный диапазон дат
+            period_message = f"с {start_date} по {end_date}"
+            # Здесь нужно будет доработать bitrix_service для работы с конкретными датами
+            actual_days = 30  # Временное решение
+        else:
+            # Используем период в днях
+            period_message = f"за {days} дней"
+            actual_days = days
         
-        # Получаем активности
+        logger.info(f"Fetching stats: {period_message}, users={user_ids_list}, types={activity_type_list}")
+        
+        # Получаем активности (ВСЕ данные с пагинацией)
         activities = await bitrix_service.get_activities(
-            days=days, 
-            user_ids=user_ids_list if user_ids_list else None,
+            days=actual_days, 
+            user_ids=user_ids_list if user_ids_list else None,  # Если пусто - будут только пресейлы
             activity_types=activity_type_list
         )
         
@@ -91,17 +112,18 @@ async def get_detailed_stats(
         user_map = {str(user['ID']): user for user in users}
         
         # Обрабатываем статистику
-        user_stats = process_user_stats_detailed(activities, user_map, days)
+        user_stats = process_user_stats_detailed(activities, user_map, actual_days)
         
         # Сортируем по убыванию активности
         user_stats.sort(key=lambda x: x["total"], reverse=True)
         
         return {
-            "period_days": days,
+            "period_days": actual_days,
+            "period_message": period_message,
             "total_activities": len(activities),
             "active_users": len(user_stats),
             "user_stats": user_stats,
-            "message": f"Детальная статистика за {days} дней"
+            "message": f"Детальная статистика {period_message}"
         }
         
     except Exception as e:
