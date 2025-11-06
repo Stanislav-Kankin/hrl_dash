@@ -6,9 +6,71 @@ const ACTIVITY_TYPES = {
     "6": { name: "Комментарий", class: "badge-comment" }
 };
 
+const WEEKDAY_NAMES = {
+    'Monday': 'Понедельник',
+    'Tuesday': 'Вторник',
+    'Wednesday': 'Среда',
+    'Thursday': 'Четверг',
+    'Friday': 'Пятница',
+    'Saturday': 'Суббота',
+    'Sunday': 'Воскресенье'
+};
+
 // Глобальные переменные
 let allUsers = [];
 let currentUserStats = {};
+let currentStatistics = {};
+
+// Инициализация при загрузке
+document.addEventListener('DOMContentLoaded', async function () {
+    initializeEventListeners();
+    await initializeDashboard();
+});
+
+function initializeEventListeners() {
+    // Обработчик изменения периода
+    document.getElementById('periodSelect').addEventListener('change', function () {
+        const customRange = document.getElementById('customDateRange');
+        if (this.value === 'custom') {
+            customRange.style.display = 'block';
+            // Устанавливаем даты по умолчанию
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - 30);
+            
+            document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
+            document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
+        } else {
+            customRange.style.display = 'none';
+        }
+    });
+
+    // Enter в полях дат
+    document.getElementById('startDate').addEventListener('change', applyFilters);
+    document.getElementById('endDate').addEventListener('change', applyFilters);
+}
+
+async function initializeDashboard() {
+    try {
+        // Инициализируем графики
+        ActivityCharts.initCharts();
+        
+        // Загружаем список сотрудников
+        await loadUsersList();
+
+        // Загружаем начальную статистику
+        await applyFilters();
+
+        // Тестируем подключение
+        const connection = await testConnection();
+        if (!connection.connected) {
+            console.warn('Внимание: подключение к Bitrix24 не настроено');
+        }
+    } catch (error) {
+        console.error('Error initializing dashboard:', error);
+        showError('resultsBody', `Ошибка инициализации: ${error.message}`);
+    }
+}
 
 // API функции
 async function loadUsersList() {
@@ -95,13 +157,38 @@ function displayUserStats(statsData) {
     const totalActivitiesElem = document.getElementById('totalActivities');
     const periodMessageElem = document.getElementById('periodMessage');
     const usersMessageElem = document.getElementById('usersMessage');
+    const avgPerDayElem = document.getElementById('avgPerDay');
+    const mostActiveDayElem = document.getElementById('mostActiveDay');
 
     // Обновляем summary cards
     activeUsersElem.textContent = statsData.active_users || 0;
     totalActivitiesElem.textContent = statsData.total_activities || 0;
 
-    // Используем кастомное сообщение о периоде если есть
-    const periodMessage = statsData.period_message || `за ${statsData.period_days || 30} дней`;
+    // Обновляем расширенную статистику
+    if (statsData.statistics) {
+        currentStatistics = statsData.statistics;
+        
+        // Среднее в день
+        const daysCount = statsData.statistics.daily_stats?.length || 1;
+        const avgPerDay = daysCount > 0 ? Math.round(statsData.total_activities / daysCount) : 0;
+        avgPerDayElem.textContent = avgPerDay;
+        
+        // Самый активный день недели
+        if (statsData.statistics.weekday_stats) {
+            const mostActiveDay = Object.entries(statsData.statistics.weekday_stats)
+                .reduce((a, b) => a[1] > b[1] ? a : b);
+            mostActiveDayElem.textContent = WEEKDAY_NAMES[mostActiveDay[0]] || mostActiveDay[0];
+        }
+        
+        // Обновляем графики
+        ActivityCharts.updateAllCharts(statsData.statistics);
+    }
+
+    // Обновляем сообщения о периоде
+    let periodMessage = `за ${statsData.period_days || 30} дней`;
+    if (statsData.date_range) {
+        periodMessage = `с ${statsData.date_range.start} по ${statsData.date_range.end}`;
+    }
     periodMessageElem.textContent = periodMessage;
     usersMessageElem.textContent = `Найдено ${statsData.active_users || 0} сотрудников`;
 
@@ -114,12 +201,8 @@ function displayUserStats(statsData) {
         totalComments += user.comments || 0;
     });
 
-    totalCallsElem.textContent = totalCalls;
-    totalCommentsElem.textContent = totalComments;
-
-    const period = document.getElementById('periodSelect').value;
-    periodMessageElem.textContent = `за ${period} дней`;
-    usersMessageElem.textContent = `Найдено ${statsData.active_users || 0} сотрудников`;
+    document.getElementById('totalCalls').textContent = totalCalls;
+    document.getElementById('totalComments').textContent = totalComments;
 
     // Отображаем таблицу
     if (statsData.user_stats.length === 0) {
@@ -155,6 +238,151 @@ function displayUserStats(statsData) {
     });
 }
 
+// Функции фильтров
+async function applyFilters() {
+    try {
+        const periodSelect = document.getElementById('periodSelect');
+        const period = periodSelect.value;
+        const employeeFilter = document.getElementById('employeesSelect').value;
+        const activityTypeFilter = document.getElementById('activityTypeSelect').value;
+
+        const filters = {
+            user_ids: employeeFilter === 'all' ? [] : [employeeFilter],
+            activity_type: activityTypeFilter === 'all' ? null : activityTypeFilter
+        };
+
+        // Обработка периода
+        if (period === 'custom') {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            if (startDate && endDate) {
+                filters.start_date = startDate;
+                filters.end_date = endDate;
+            } else {
+                alert('Пожалуйста, выберите начальную и конечную даты');
+                return;
+            }
+        } else {
+            filters.days = parseInt(period);
+        }
+
+        const statsData = await loadDetailedStats(filters);
+        if (statsData) {
+            displayUserStats(statsData);
+        }
+
+        // Скрываем панель детализации при применении новых фильтров
+        document.getElementById('detailsPanel').classList.remove('active');
+    } catch (error) {
+        console.error('Error applying filters:', error);
+        showError('resultsBody', `Ошибка применения фильтров: ${error.message}`);
+    }
+}
+
+function toggleQuickAction(action) {
+    const buttons = document.querySelectorAll('.quick-btn');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+
+    let activityType = 'all';
+    switch (action) {
+        case 'calls':
+            activityType = '2';
+            break;
+        case 'comments':
+            activityType = '6';
+            break;
+        case 'tasks':
+            activityType = '4';
+            break;
+        case 'meetings':
+            activityType = '1';
+            break;
+    }
+
+    document.getElementById('activityTypeSelect').value = activityType;
+    applyFilters();
+}
+
+// Вспомогательные функции
+function showLoading(elementId, message = 'Загрузка...') {
+    const element = document.getElementById(elementId);
+    element.innerHTML = `<tr><td colspan="8" class="loading">${message}</td></tr>`;
+}
+
+function showError(elementId, message) {
+    const element = document.getElementById(elementId);
+    element.innerHTML = `<tr><td colspan="8" style="color: red; text-align: center; padding: 20px;">${message}</td></tr>`;
+}
+
+// Функция отладки пользователей
+async function debugUsers() {
+    try {
+        const response = await fetch('/api/debug/users');
+        const data = await response.json();
+
+        console.log('Debug users data:', data);
+
+        let message = `Всего пользователей: ${data.total_users}\n`;
+        message += `Пресейл пользователей: ${data.total_presales_users}\n\n`;
+
+        if (data.presales_users) {
+            message += "Пресейл сотрудники:\n";
+            data.presales_users.forEach(user => {
+                message += `- ${user.NAME} ${user.LAST_NAME} (${user.WORK_POSITION || 'нет должности'}) - ID: ${user.ID}\n`;
+            });
+        }
+
+        alert(message);
+
+    } catch (error) {
+        alert('Ошибка отладки: ' + error.message);
+    }
+}
+
+// Функция поиска пользователей
+async function findUsers() {
+    try {
+        const response = await fetch('/api/find-users');
+        const data = await response.json();
+
+        console.log('Find users data:', data);
+
+        let message = `Найдено ${data.found_users.length} из ${data.target_names.length} сотрудников\n\n`;
+
+        if (data.found_users.length > 0) {
+            message += "Найденные сотрудники:\n";
+            data.found_users.forEach(user => {
+                message += `- ${user.FULL_NAME} (${user.WORK_POSITION || 'нет должности'}) - ID: ${user.ID}\n`;
+            });
+        } else {
+            message += "Сотрудники не найдены!\n";
+        }
+
+        alert(message);
+
+    } catch (error) {
+        alert('Ошибка поиска: ' + error.message);
+    }
+}
+
+// Функция очистки кэша
+async function clearCache() {
+    try {
+        const result = await BitrixAPI.clearCache();
+        if (result.success) {
+            alert('✅ Кэш успешно очищен!');
+            // Перезагружаем данные
+            await applyFilters();
+        } else {
+            alert('❌ Ошибка очистки кэша: ' + (result.error || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        alert('❌ Ошибка очистки кэша: ' + error.message);
+    }
+}
+
+// Функция детализации (остается без изменений)
 function showUserDetails(userId) {
     const userStats = currentUserStats[userId];
     if (!userStats) return;
@@ -219,167 +447,3 @@ function showUserDetails(userId) {
 
     panel.classList.add('active');
 }
-
-// Функции фильтров
-async function applyFilters() {
-    const period = parseInt(document.getElementById('periodSelect').value);
-    const employeeFilter = document.getElementById('employeesSelect').value;
-    const activityTypeFilter = document.getElementById('activityTypeSelect').value;
-
-    const filters = {
-        days: period,
-        user_ids: employeeFilter === 'all' ? [] : [employeeFilter],
-        activity_type: activityTypeFilter === 'all' ? null : activityTypeFilter
-    };
-
-    const statsData = await loadDetailedStats(filters);
-    if (statsData) {
-        displayUserStats(statsData);
-    }
-
-    // Скрываем панель детализации при применении новых фильтров
-    document.getElementById('detailsPanel').classList.remove('active');
-}
-
-function toggleQuickAction(action) {
-    const buttons = document.querySelectorAll('.quick-btn');
-    buttons.forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
-
-    let activityType = 'all';
-    switch (action) {
-        case 'calls':
-            activityType = '2';
-            break;
-        case 'comments':
-            activityType = '6';
-            break;
-        case 'tasks':
-            activityType = '4';
-            break;
-        case 'meetings':
-            activityType = '1';
-            break;
-    }
-
-    document.getElementById('activityTypeSelect').value = activityType;
-    applyFilters();
-}
-
-// Вспомогательные функции
-function showLoading(elementId, message = 'Загрузка...') {
-    const element = document.getElementById(elementId);
-    element.innerHTML = `<tr><td colspan="8" class="loading">${message}</td></tr>`;
-}
-
-function showError(elementId, message) {
-    const element = document.getElementById(elementId);
-    element.innerHTML = `<tr><td colspan="8" style="color: red; text-align: center; padding: 20px;">${message}</td></tr>`;
-}
-
-// Функция отладки пользователей
-async function debugUsers() {
-    try {
-        const response = await fetch('/api/debug/users');
-        const data = await response.json();
-
-        console.log('Debug users data:', data);
-
-        let message = `Всего пользователей: ${data.total_users}\n`;
-        message += `Пресейл пользователей: ${data.total_presales_users}\n\n`;
-
-        if (data.presales_users) {
-            message += "Пресейл сотрудники:\n";
-            data.presales_users.forEach(user => {
-                message += `- ${user.NAME} ${user.LAST_NAME} (${user.WORK_POSITION || 'нет должности'}) - ID: ${user.ID}\n`;
-            });
-        }
-
-        alert(message);
-
-    } catch (error) {
-        alert('Ошибка отладки: ' + error.message);
-    }
-}
-document.getElementById('periodSelect').addEventListener('change', function () {
-    const customRange = document.getElementById('customDateRange');
-    if (this.value === 'custom') {
-        customRange.style.display = 'block';
-    } else {
-        customRange.style.display = 'none';
-    }
-});
-
-// Обновленная функция applyFilters
-async function applyFilters() {
-    const periodSelect = document.getElementById('periodSelect');
-    const period = periodSelect.value;
-    const employeeFilter = document.getElementById('employeesSelect').value;
-    const activityTypeFilter = document.getElementById('activityTypeSelect').value;
-
-    const filters = {
-        days: period === 'custom' ? 30 : parseInt(period), // временно
-        user_ids: employeeFilter === 'all' ? [] : [employeeFilter],
-        activity_type: activityTypeFilter === 'all' ? null : activityTypeFilter
-    };
-
-    // Если выбран кастомный период
-    if (period === 'custom') {
-        const startDate = document.getElementById('startDate').value;
-        const endDate = document.getElementById('endDate').value;
-        if (startDate && endDate) {
-            filters.start_date = startDate;
-            filters.end_date = endDate;
-        }
-    }
-
-    const statsData = await loadDetailedStats(filters);
-    if (statsData) {
-        displayUserStats(statsData);
-    }
-
-    document.getElementById('detailsPanel').classList.remove('active');
-}
-
-// Функция поиска пользователей
-async function findUsers() {
-    try {
-        const response = await fetch('/api/find-users');
-        const data = await response.json();
-
-        console.log('Find users data:', data);
-
-        let message = `Найдено ${data.found_users.length} из ${data.target_names.length} сотрудников\n\n`;
-
-        if (data.found_users.length > 0) {
-            message += "Найденные сотрудники:\n";
-            data.found_users.forEach(user => {
-                message += `- ${user.FULL_NAME} (${user.WORK_POSITION || 'нет должности'}) - ID: ${user.ID}\n`;
-            });
-        } else {
-            message += "Сотрудники не найдены!\n";
-        }
-
-        alert(message);
-
-    } catch (error) {
-        alert('Ошибка поиска: ' + error.message);
-    }
-}
-
-// Инициализация при загрузке
-document.addEventListener('DOMContentLoaded', async function () {
-    // Загружаем список сотрудников
-    await loadUsersList();
-
-    // Загружаем начальную статистику
-    await applyFilters();
-
-    // Тестируем подключение
-    const connection = await testConnection();
-    if (!connection.connected) {
-        console.warn('Внимание: подключение к Bitrix24 не настроено');
-    }
-});
-
-

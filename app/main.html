@@ -1,13 +1,12 @@
 <!DOCTYPE html>
 <html lang="ru">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bitrix24 Analytics Dashboard</title>
     <link rel="stylesheet" href="/static/css/dashboard.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-
 <body>
     <div class="dashboard">
         <div class="header">
@@ -23,6 +22,7 @@
                         <option value="all">Все сотрудники</option>
                     </select>
                 </div>
+                
                 <div class="filter-item">
                     <label>Период:</label>
                     <select id="periodSelect">
@@ -34,20 +34,12 @@
                 </div>
 
                 <div class="filter-item" id="customDateRange" style="display: none;">
-                    <label>Произвольный период:</label>
-                    <div style="display: flex; gap: 10px;">
-                        <input type="date" id="startDate" placeholder="Начальная дата">
-                        <input type="date" id="endDate" placeholder="Конечная дата">
+                    <label>Диапазон дат:</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="date" id="startDate" style="flex: 1;">
+                        <span>—</span>
+                        <input type="date" id="endDate" style="flex: 1;">
                     </div>
-                </div>
-
-                <div class="filter-item">
-                    <label>Период:</label>
-                    <select id="periodSelect">
-                        <option value="7">7 дней</option>
-                        <option value="30" selected>30 дней</option>
-                        <option value="90">90 дней</option>
-                    </select>
                 </div>
 
                 <div class="filter-item">
@@ -62,6 +54,7 @@
                 </div>
 
                 <button class="apply-btn" onclick="applyFilters()">Применить фильтры</button>
+                <button class="clear-btn" onclick="clearCache()" title="Очистить кэш">🔄</button>
             </div>
         </div>
 
@@ -72,8 +65,8 @@
                 <button class="quick-btn" onclick="toggleQuickAction('comments')">Только комментарии</button>
                 <button class="quick-btn" onclick="toggleQuickAction('tasks')">Только задачи</button>
                 <button class="quick-btn" onclick="testConnection()">Тест подключения</button>
-                <button class="quick-btn" onclick="debugUsers()">🐛 Отладка пользователей</button>
-                <button class="quick-btn" onclick="findUsers()">🔍 Найти сотрудников</button>
+                <button class="quick-btn" onclick="debugUsers()">🐛 Отладка</button>
+                <button class="quick-btn" onclick="findUsers()">🔍 Поиск</button>
             </div>
         </div>
 
@@ -98,6 +91,40 @@
                     <h3>Комментарии</h3>
                     <div class="value" id="totalComments">0</div>
                     <div class="subtext">написано</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Среднее в день</h3>
+                    <div class="value" id="avgPerDay">0</div>
+                    <div class="subtext">активностей</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Самая активная среда</h3>
+                    <div class="value" id="mostActiveDay">-</div>
+                    <div class="subtext">день недели</div>
+                </div>
+            </div>
+
+            <!-- Секция графиков -->
+            <div class="charts-section">
+                <div class="charts-row">
+                    <div class="chart-container">
+                        <h3>📈 Активность по дням недели</h3>
+                        <canvas id="weekActivityChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3>🕒 Активность по часам</h3>
+                        <canvas id="hourActivityChart"></canvas>
+                    </div>
+                </div>
+                <div class="charts-row">
+                    <div class="chart-container">
+                        <h3>📊 Распределение по типам</h3>
+                        <canvas id="typeDistributionChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3>📅 Активность по дням</h3>
+                        <canvas id="dailyActivityChart"></canvas>
+                    </div>
                 </div>
             </div>
 
@@ -131,7 +158,7 @@
 
     <!-- Подключаем JavaScript файлы -->
     <script src="/static/js/api.js"></script>
+    <script src="/static/js/charts.js"></script>
     <script src="/static/js/app.js"></script>
 </body>
-
 </html>
