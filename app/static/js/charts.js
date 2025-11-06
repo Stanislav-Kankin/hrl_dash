@@ -143,13 +143,17 @@ class ActivityCharts {
     }
 
     static updateAllCharts(statistics) {
-        if (!statistics) return;
+        if (!statistics) {
+            console.log('No statistics provided for charts');
+            return;
+        }
+
+        console.log('Updating charts with:', statistics);
 
         // Обновляем график по дням недели
-        if (this.charts.weekActivity && statistics.weekday_stats) {
+        if (this.charts.weekActivity) {
             const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-            const weekLabels = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-            const weekData = weekDays.map(day => statistics.weekday_stats[day] || 0);
+            const weekData = weekDays.map(day => statistics.weekday_stats?.[day] || 0);
             
             this.charts.weekActivity.data.datasets[0].data = weekData;
             this.charts.weekActivity.update();
@@ -163,17 +167,17 @@ class ActivityCharts {
         }
 
         // Обновляем круговую диаграмму типов
-        if (this.charts.typeDistribution && statistics.type_stats) {
+        if (this.charts.typeDistribution) {
             const typeData = [
-                statistics.type_stats['2'] || 0, // Звонки
-                statistics.type_stats['6'] || 0, // Комментарии
-                statistics.type_stats['4'] || 0, // Задачи
-                statistics.type_stats['1'] || 0, // Встречи
+                statistics.type_stats?.['2'] || 0, // Звонки
+                statistics.type_stats?.['6'] || 0, // Комментарии
+                statistics.type_stats?.['4'] || 0, // Задачи
+                statistics.type_stats?.['1'] || 0, // Встречи
                 (statistics.total_activities || 0) - 
-                ((statistics.type_stats['2'] || 0) + 
-                 (statistics.type_stats['6'] || 0) + 
-                 (statistics.type_stats['4'] || 0) + 
-                 (statistics.type_stats['1'] || 0)) // Другие
+                ((statistics.type_stats?.['2'] || 0) + 
+                 (statistics.type_stats?.['6'] || 0) + 
+                 (statistics.type_stats?.['4'] || 0) + 
+                 (statistics.type_stats?.['1'] || 0)) // Другие
             ];
             
             this.charts.typeDistribution.data.datasets[0].data = typeData;

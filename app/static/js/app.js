@@ -52,8 +52,11 @@ function initializeEventListeners() {
 
 async function initializeDashboard() {
     try {
+        console.log('Initializing dashboard...');
+        
         // Инициализируем графики
         ActivityCharts.initCharts();
+        console.log('Charts initialized');
         
         // Загружаем список сотрудников
         await loadUsersList();
@@ -147,6 +150,8 @@ function updateUserSelect() {
 }
 
 function displayUserStats(statsData) {
+    console.log('Received stats data:', statsData);
+    
     if (!statsData || !statsData.user_stats) {
         showError('resultsBody', 'Нет данных для отображения');
         return;
@@ -166,6 +171,7 @@ function displayUserStats(statsData) {
 
     // Обновляем расширенную статистику
     if (statsData.statistics) {
+        console.log('Statistics data:', statsData.statistics);
         currentStatistics = statsData.statistics;
         
         // Среднее в день
@@ -176,12 +182,25 @@ function displayUserStats(statsData) {
         // Самый активный день недели
         if (statsData.statistics.weekday_stats) {
             const mostActiveDay = Object.entries(statsData.statistics.weekday_stats)
-                .reduce((a, b) => a[1] > b[1] ? a : b);
+                .reduce((a, b) => a[1] > b[1] ? a : b, ['', 0]);
             mostActiveDayElem.textContent = WEEKDAY_NAMES[mostActiveDay[0]] || mostActiveDay[0];
         }
         
         // Обновляем графики
         ActivityCharts.updateAllCharts(statsData.statistics);
+    } else {
+        console.log('No statistics data received');
+        // Заполняем нулями если нет статистики
+        avgPerDayElem.textContent = '0';
+        mostActiveDayElem.textContent = '-';
+        
+        // Обновляем графики пустыми данными
+        ActivityCharts.updateAllCharts({
+            weekday_stats: {},
+            hourly_stats: {},
+            type_stats: {},
+            daily_stats: []
+        });
     }
 
     // Обновляем сообщения о периоде
@@ -382,7 +401,7 @@ async function clearCache() {
     }
 }
 
-// Функция детализации (остается без изменений)
+// Функция детализации
 function showUserDetails(userId) {
     const userStats = currentUserStats[userId];
     if (!userStats) return;

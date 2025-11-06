@@ -3,7 +3,6 @@ import os
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 import logging
-from functools import lru_cache
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -17,13 +16,13 @@ class BitrixService:
 
     async def ensure_session(self):
         """Создает сессию если её нет"""
-        if self.session is None:
+        if self.session is None or self.session.closed:
             timeout = aiohttp.ClientTimeout(total=30)
             self.session = aiohttp.ClientSession(timeout=timeout)
 
     async def close_session(self):
         """Закрывает сессию"""
-        if self.session:
+        if self.session and not self.session.closed:
             await self.session.close()
             self.session = None
 
@@ -175,33 +174,6 @@ class BitrixService:
             logger.error(f"Error getting activities: {str(e)}")
             return None
 
-    async def get_calls(self, days: int = 30, user_ids: List[str] = None) -> Optional[List[Dict]]:
-        """Получить данные о звонках"""
-        try:
-            start_date = datetime.now() - timedelta(days=days)
-            start_date_str = start_date.strftime("%Y-%m-%dT%H:%M:%S")
-            
-            params = {
-                'filter[>=CALL_START_DATE]': start_date_str
-            }
-            
-            if user_ids:
-                params['filter[PORTAL_USER_ID]'] = user_ids
-            
-            params['select[0]'] = 'ID'
-            params['select[1]'] = 'CALL_TYPE'
-            params['select[2]'] = 'CALL_DURATION'
-            params['select[3]'] = 'CALL_START_DATE'
-            params['select[4]'] = 'PORTAL_USER_ID'
-            params['select[5]'] = 'PHONE_NUMBER'
-            
-            calls = await self.make_bitrix_request("voximplant.statistic.get", params)
-            return calls
-            
-        except Exception as e:
-            logger.error(f"Error getting calls: {str(e)}")
-            return None
-
     async def get_presales_users(self) -> Optional[List[Dict]]:
         """Получает список сотрудников пресейла с кэшированием"""
         try:
@@ -245,21 +217,6 @@ class BitrixService:
         except Exception as e:
             logger.error(f"Error getting user by ID {user_id}: {str(e)}")
             return None
-
-    async def search_users_by_name(self, search_string: str) -> Optional[List[Dict]]:
-        """Поиск пользователей по имени"""
-        try:
-            params = {'FILTER[FIND]': search_string}
-            users = await self.make_bitrix_request("user.search", params)
-            return users
-        except Exception as e:
-            logger.error(f"Error searching users by name {search_string}: {str(e)}")
-            return None
-
-    def clear_cache(self):
-        """Очищает кэш"""
-        self._cache.clear()
-        logger.info("Cache cleared")
 
     async def get_activity_statistics(self, days: int = None, start_date: str = None, end_date: str = None, 
                                     user_ids: List[str] = None) -> Dict[str, Any]:
@@ -329,3 +286,8 @@ class BitrixService:
                 'end': sorted_daily_stats[-1]['date'] if sorted_daily_stats else ''
             }
         }
+
+    def clear_cache(self):
+        """Очищает кэш"""
+        self._cache.clear()
+        logger.info("Cache cleared")

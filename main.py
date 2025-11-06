@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timedelta
@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Bitrix24 Analytics Dashboard", version="1.0")
 load_dotenv()
 
+# Инициализируем сервис
+bitrix_service = BitrixService()
+
 # Монтируем статические файлы из папки app/static
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
@@ -28,7 +31,6 @@ async def read_root():
 async def get_users_list():
     """Список сотрудников для фильтров"""
     try:
-        bitrix_service = BitrixService()
         users = await bitrix_service.get_presales_users()
         
         if users is None:
@@ -54,152 +56,165 @@ async def get_users_list():
         logger.error(f"Error in users-list: {str(e)}")
         return {"users": [], "error": str(e)}
 
-from datetime import datetime, timedelta
-from fastapi import FastAPI, Query
-from typing import List, Optional, Dict, Any
-import logging
-
-# ... остальной код ...
-
 @app.get("/api/stats/detailed")
 async def get_detailed_stats(
-    days: int = Query(30, description="Период в днях"),
-    start_date: Optional[str] = Query(None, description="Начальная дата (YYYY-MM-DD)"),
-    end_date: Optional[str] = Query(None, description="Конечная дата (YYYY-MM-DD)"),
-    user_ids: Optional[str] = Query(None, description="ID пользователей через запятую"),
-    activity_type: Optional[str] = Query(None, description="Тип активности")
+    days: int = 30,
+    start_date: str = None,
+    end_date: str = None,
+    user_ids: str = None,
+    activity_type: str = None,
+    include_statistics: bool = False
 ):
-    """Детальная статистика по сотрудникам с выбором диапазона дат"""
+    """Получить детальную статистику с опциональной аналитикой"""
     try:
-        bitrix_service = BitrixService()
-        
-        # Парсим параметры
         user_ids_list = user_ids.split(',') if user_ids else []
-        activity_type_list = [activity_type] if activity_type and activity_type != 'all' else None
+        activity_types = [activity_type] if activity_type else None
         
-        # Определяем период
-        if start_date and end_date:
-            # Используем указанный диапазон дат
-            period_message = f"с {start_date} по {end_date}"
-            # Здесь нужно будет доработать bitrix_service для работы с конкретными датами
-            actual_days = 30  # Временное решение
-        else:
-            # Используем период в днях
-            period_message = f"за {days} дней"
-            actual_days = days
+        logger.info(f"Fetching stats: days={days}, start_date={start_date}, end_date={end_date}, users={user_ids_list}, types={activity_types}")
         
-        logger.info(f"Fetching stats: {period_message}, users={user_ids_list}, types={activity_type_list}")
-        
-        # Получаем активности (ВСЕ данные с пагинацией)
+        # Получаем активности
         activities = await bitrix_service.get_activities(
-            days=actual_days, 
-            user_ids=user_ids_list if user_ids_list else None,  # Если пусто - будут только пресейлы
-            activity_types=activity_type_list
+            days=days,
+            start_date=start_date,
+            end_date=end_date,
+            user_ids=user_ids_list,
+            activity_types=activity_types
         )
         
-        if activities is None:
-            activities = []
-        
-        # Получаем пользователей
-        users = await bitrix_service.get_presales_users()
-        if users is None:
-            users = []
-        
-        # Фильтруем пользователей если указаны конкретные ID
-        if user_ids_list:
-            users = [user for user in users if str(user.get('ID')) in user_ids_list]
-        
-        user_map = {str(user['ID']): user for user in users}
-        
-        # Обрабатываем статистику
-        user_stats = process_user_stats_detailed(activities, user_map, actual_days)
-        
-        # Сортируем по убыванию активности
-        user_stats.sort(key=lambda x: x["total"], reverse=True)
-        
-        return {
-            "period_days": actual_days,
-            "period_message": period_message,
-            "total_activities": len(activities),
-            "active_users": len(user_stats),
-            "user_stats": user_stats,
-            "message": f"Детальная статистика {period_message}"
-        }
-        
-    except Exception as e:
-        logger.error(f"Error in detailed stats: {str(e)}")
-        return {"error": str(e), "user_stats": []}
-
-def process_user_stats_detailed(activities: List[Dict], user_map: Dict, period_days: int) -> List[Dict]:
-    """Детальная обработка статистики по пользователям"""
-    user_stats = {}
-    
-    for activity in activities:
-        user_id = str(activity.get('AUTHOR_ID'))
-        if not user_id:
-            continue
-            
-        if user_id not in user_stats:
-            user_info = user_map.get(user_id, {})
-            user_stats[user_id] = {
-                "user_id": user_id,
-                "user_name": f"{user_info.get('NAME', '')} {user_info.get('LAST_NAME', '')}".strip() or f"ID: {user_id}",
-                "days": set(),
-                "calls": 0,
-                "comments": 0,
-                "tasks": 0,
-                "meetings": 0,
-                "other": 0,
-                "total": 0,
-                "last_activity": activity.get('CREATED', ''),
-                "activities": []
+        if not activities:
+            return {
+                "success": True,
+                "user_stats": [],
+                "total_activities": 0,
+                "active_users": 0,
+                "period_days": days if not start_date else None,
+                "date_range": {
+                    "start": start_date,
+                    "end": end_date
+                } if start_date and end_date else None
             }
         
-        user = user_stats[user_id]
-        activity_date = activity.get('CREATED', '')[:10]  # YYYY-MM-DD
-        if activity_date:
-            user["days"].add(activity_date)
+        # Обрабатываем статистику по пользователям
+        user_stats = []
+        user_activities = {}
         
-        # Классифицируем активность
-        type_id = str(activity.get('TYPE_ID', ''))
-        if type_id == "2":
-            user["calls"] += 1
-        elif type_id == "6":
-            user["comments"] += 1
-        elif type_id == "4":
-            user["tasks"] += 1
-        elif type_id == "1":
-            user["meetings"] += 1
-        else:
-            user["other"] += 1
+        for activity in activities:
+            user_id = activity['AUTHOR_ID']
+            if user_id not in user_activities:
+                user_activities[user_id] = []
+            user_activities[user_id].append(activity)
         
-        user["total"] += 1
+        # Получаем информацию о пользователях
+        presales_users = await bitrix_service.get_presales_users()
+        user_info_map = {user['ID']: user for user in presales_users}
         
-        # Обновляем последнюю активность
-        if activity.get('CREATED', '') > user["last_activity"]:
-            user["last_activity"] = activity.get('CREATED', '')
+        for user_id, user_acts in user_activities.items():
+            user_info = user_info_map.get(user_id)
+            if not user_info:
+                continue
+                
+            # Считаем статистику по типам
+            calls = len([a for a in user_acts if a['TYPE_ID'] == '2'])
+            comments = len([a for a in user_acts if a['TYPE_ID'] == '6'])
+            tasks = len([a for a in user_acts if a['TYPE_ID'] == '4'])
+            meetings = len([a for a in user_acts if a['TYPE_ID'] == '1'])
+            total = len(user_acts)
+            
+            # Дни активности
+            activity_dates = set()
+            last_activity = None
+            
+            for act in user_acts:
+                act_date = datetime.fromisoformat(act['CREATED'].replace('Z', '+00:00'))
+                date_key = act_date.strftime('%Y-%m-%d')
+                activity_dates.add(date_key)
+                
+                if not last_activity or act_date > last_activity:
+                    last_activity = act_date
+            
+            user_stats.append({
+                "user_id": user_id,
+                "user_name": f"{user_info.get('NAME', '')} {user_info.get('LAST_NAME', '')}",
+                "calls": calls,
+                "comments": comments,
+                "tasks": tasks,
+                "meetings": meetings,
+                "total": total,
+                "days_count": len(activity_dates),
+                "last_activity_date": last_activity.strftime('%Y-%m-%d %H:%M') if last_activity else "Нет данных",
+                "activities": user_acts
+            })
         
-        user["activities"].append(activity)
-    
-    # Преобразуем в список и добавляем вычисляемые поля
-    stats_list = []
-    for user_id, stats in user_stats.items():
-        last_activity = stats["last_activity"]
-        last_activity_date = last_activity[:10] if last_activity else "Нет данных"
+        total_activities = len(activities)
         
-        stats_list.append({
-            **stats,
-            "days_count": len(stats["days"]),
-            "last_activity_date": last_activity_date
-        })
-    
-    return stats_list
+        result = {
+            "success": True,
+            "user_stats": user_stats,
+            "total_activities": total_activities,
+            "active_users": len(user_stats),
+            "period_days": days if not start_date else None,
+            "date_range": {
+                "start": start_date,
+                "end": end_date
+            } if start_date and end_date else None
+        }
+        
+        # Добавляем статистику если запрошено
+        if include_statistics:
+            statistics = await bitrix_service.get_activity_statistics(
+                days=days,
+                start_date=start_date,
+                end_date=end_date,
+                user_ids=user_ids_list
+            )
+            result["statistics"] = statistics
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error getting detailed stats: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/statistics")
+async def get_statistics(
+    days: int = None,
+    start_date: str = None,
+    end_date: str = None,
+    user_ids: str = None
+):
+    """Получить статистику активностей с группировкой"""
+    try:
+        user_ids_list = user_ids.split(',') if user_ids else []
+        
+        statistics = await bitrix_service.get_activity_statistics(
+            days=days,
+            start_date=start_date,
+            end_date=end_date,
+            user_ids=user_ids_list
+        )
+        
+        return {
+            "success": True,
+            "statistics": statistics
+        }
+    except Exception as e:
+        logger.error(f"Error getting statistics: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/clear-cache")
+async def clear_cache():
+    """Очистить кэш"""
+    try:
+        bitrix_service.clear_cache()
+        return {"success": True, "message": "Cache cleared successfully"}
+    except Exception as e:
+        logger.error(f"Error clearing cache: {str(e)}")
+        return {"success": False, "error": str(e)}
 
 @app.get("/api/connection-test")
 async def test_connection():
     """Тест подключения к Bitrix24"""
     try:
-        bitrix_service = BitrixService()
         is_connected = await bitrix_service.test_connection()
         
         return {
@@ -224,8 +239,6 @@ async def health_check():
 async def debug_users():
     """Отладочный эндпоинт для проверки пользователей"""
     try:
-        bitrix_service = BitrixService()
-        
         # Получаем всех пользователей
         all_users = await bitrix_service.get_users(only_active=True)
         
@@ -264,7 +277,6 @@ async def debug_users():
 async def find_users():
     """Найти пользователей по имени"""
     try:
-        bitrix_service = BitrixService()
         all_users = await bitrix_service.get_users(only_active=True)
         
         if not all_users:
