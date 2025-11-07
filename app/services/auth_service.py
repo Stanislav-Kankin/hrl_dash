@@ -9,7 +9,7 @@ SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 часа
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
 
 class AuthService:
     def __init__(self):
@@ -35,6 +35,7 @@ class AuthService:
                 "hashed_password": hashed_password,
                 "full_name": "Администратор",
                 "is_active": True,
+                "is_admin": True,
                 "created_at": datetime.utcnow()
             }
             print(f"✅ Создан администратор: {admin_email}")
@@ -83,6 +84,7 @@ class AuthService:
             "hashed_password": hashed_password,
             "full_name": full_name,
             "is_active": True,
+            "is_admin": False,
             "created_at": datetime.utcnow()
         }
         self.users_db[email] = user_data

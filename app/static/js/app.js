@@ -28,7 +28,7 @@ function initializeEventListeners() {
                 const endDate = new Date();
                 const startDate = new Date();
                 startDate.setDate(startDate.getDate() - 30);
-                
+
                 document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
                 document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
             } else {
@@ -39,12 +39,12 @@ function initializeEventListeners() {
 
     const modal = document.getElementById('authModal');
     const closeBtn = document.querySelector('.close');
-    
+
     if (closeBtn) {
         closeBtn.addEventListener('click', hideAuthModal);
     }
-    
-    window.addEventListener('click', function(event) {
+
+    window.addEventListener('click', function (event) {
         if (event.target === modal) {
             hideAuthModal();
         }
@@ -54,9 +54,9 @@ function initializeEventListeners() {
 async function checkAuthStatus() {
     const token = BitrixAPI.authToken;
     console.log('🔐 Checking auth, token exists:', !!token);
-    
+
     const authButton = document.getElementById('authButton');
-    
+
     if (!token) {
         console.log('❌ No token found');
         if (authButton) {
@@ -70,11 +70,11 @@ async function checkAuthStatus() {
         console.log('🔐 Trying to get current user...');
         const userData = await BitrixAPI.getCurrentUser();
         console.log('🔐 User data response:', userData);
-        
+
         currentUser = userData;
         console.log('✅ User authenticated:', currentUser);
         updateUIForAuth();
-        
+
         if (authButton) {
             authButton.textContent = `👤 ${currentUser.full_name || currentUser.email} (Выйти)`;
             authButton.onclick = logout;
@@ -92,7 +92,7 @@ async function checkAuthStatus() {
 async function initializeDashboard() {
     try {
         console.log('📊 Initializing dashboard...');
-        
+
         ActivityCharts.initCharts();
         await loadUsersList();
         await applyFilters();
@@ -131,7 +131,7 @@ function showRegister() {
 
 async function login(event) {
     if (event) event.preventDefault();
-    
+
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
 
@@ -144,7 +144,7 @@ async function login(event) {
         console.log('🔐 Attempting login for:', email);
         const data = await BitrixAPI.login(email, password);
         console.log('🔐 Login response:', data);
-        
+
         if (data.access_token) {
             BitrixAPI.setAuthToken(data.access_token);
             console.log('✅ Token set');
@@ -155,13 +155,13 @@ async function login(event) {
         console.error('❌ Login error:', error);
         alert('❌ Ошибка входа: ' + error.message);
     }
-    
+
     return false;
 }
 
 async function register(event) {
     if (event) event.preventDefault();
-    
+
     const email = document.getElementById('registerEmail').value;
     const password = document.getElementById('registerPassword').value;
     const full_name = document.getElementById('registerName').value;
@@ -175,7 +175,7 @@ async function register(event) {
         console.log('🔐 Attempting registration for:', email);
         const data = await BitrixAPI.register(email, password, full_name);
         console.log('🔐 Registration response:', data);
-        
+
         if (data.email) {
             alert('✅ Регистрация успешна! Теперь войдите в систему.');
             showLogin();
@@ -184,7 +184,7 @@ async function register(event) {
         console.error('❌ Registration error:', error);
         alert('❌ Ошибка регистрации: ' + error.message);
     }
-    
+
     return false;
 }
 
@@ -199,13 +199,13 @@ function updateUIForAuth() {
 function logout() {
     BitrixAPI.clearAuthToken();
     currentUser = null;
-    
+
     const authButton = document.getElementById('authButton');
     if (authButton) {
         authButton.textContent = '🔐 Вход для админа';
         authButton.onclick = showAuthModal;
     }
-    
+
     // Не перезагружаем страницу, просто обновляем UI
     alert('✅ Вы вышли из системы');
 }
@@ -231,7 +231,7 @@ async function loadUsersList() {
 async function applyFilters() {
     try {
         showLoading('resultsBody', 'Загрузка данных...');
-        
+
         const period = document.getElementById('periodSelect').value;
         const employeeFilter = document.getElementById('employeesSelect').value;
         const activityTypeFilter = document.getElementById('activityTypeSelect').value;
@@ -269,15 +269,28 @@ function displayUserStats(statsData) {
         return;
     }
 
+    // Добавьте подсчет общих цифр:
+    let totalCalls = 0;
+    let totalComments = 0;
+    let totalTasks = 0;
+
+    statsData.user_stats.forEach(user => {
+        totalCalls += user.calls || 0;
+        totalComments += user.comments || 0;
+        totalTasks += user.tasks || 0;
+    });
+
     document.getElementById('activeUsers').textContent = statsData.active_users || 0;
     document.getElementById('totalActivities').textContent = statsData.total_activities || 0;
+    document.getElementById('totalCalls').textContent = totalCalls;
+    document.getElementById('totalComments').textContent = totalComments;
 
     if (statsData.statistics) {
         ActivityCharts.updateAllCharts(statsData.statistics);
     }
 
     const tbody = document.getElementById('resultsBody');
-    
+
     if (statsData.user_stats.length === 0) {
         tbody.innerHTML = '<tr><td colspan="8" class="loading">Нет данных</td></tr>';
         return;
@@ -340,7 +353,7 @@ window.showLogin = showLogin;
 window.showRegister = showRegister;
 window.logout = logout;
 
-window.testConnection = async function() {
+window.testConnection = async function () {
     try {
         const data = await BitrixAPI.testConnection();
         alert(data.connected ? '✅ Подключение успешно!' : '❌ Ошибка подключения');
@@ -349,7 +362,7 @@ window.testConnection = async function() {
     }
 };
 
-window.clearCache = async function() {
+window.clearCache = async function () {
     try {
         if (!BitrixAPI.authToken) {
             alert('❌ Для этой функции требуется авторизация');
@@ -372,7 +385,7 @@ window.clearCache = async function() {
     }
 };
 
-window.debugUsers = async function() {
+window.debugUsers = async function () {
     try {
         if (!BitrixAPI.authToken) {
             alert('❌ Для этой функции требуется авторизация');
@@ -402,7 +415,7 @@ window.debugUsers = async function() {
     }
 };
 
-window.findUsers = async function() {
+window.findUsers = async function () {
     try {
         if (!BitrixAPI.authToken) {
             alert('❌ Для этой функции требуется авторизация');
@@ -433,7 +446,7 @@ window.findUsers = async function() {
     }
 };
 
-window.showAdminPanel = async function() {
+window.showAdminPanel = async function () {
     try {
         if (!BitrixAPI.authToken) {
             alert('❌ Для этой функции требуется авторизация');
@@ -442,7 +455,7 @@ window.showAdminPanel = async function() {
         }
         const data = await BitrixAPI.getAllowedEmails();
         let message = '📧 Разрешенные email-адреса:\n\n';
-        
+
         if (data.allowed_emails && data.allowed_emails.length > 0) {
             data.allowed_emails.forEach(email => {
                 message += `• ${email}\n`;
@@ -450,9 +463,9 @@ window.showAdminPanel = async function() {
         } else {
             message += 'Нет разрешенных email-адресов\n';
         }
-        
+
         const action = prompt(message + '\n\nВведите:\n1 - для добавления email\n2 - для удаления email\n(или Отмена для выхода)');
-        
+
         if (action === '1') {
             const addEmail = prompt('Введите email для добавления в белый список:');
             if (addEmail) {
@@ -477,7 +490,7 @@ window.showAdminPanel = async function() {
     }
 };
 
-window.addAllowedEmail = async function() {
+window.addAllowedEmail = async function () {
     if (!BitrixAPI.authToken) {
         alert('❌ Для этой функции требуется авторизация');
         showAuthModal();
@@ -500,17 +513,33 @@ window.addAllowedEmail = async function() {
     }
 };
 
-// Добавить принудительный показ формы авторизации
+// В app.js ЗАМЕНИТЕ функцию initAuth():
 function initAuth() {
     const token = localStorage.getItem('auth_token');
+    console.log('🔐 Auth init, token exists:', !!token);
+
     if (!token) {
         console.log('🔐 No auth token - showing login form');
-        setTimeout(() => showAuthModal(), 1000);
+        // Показываем модальное окно сразу
+        setTimeout(() => {
+            showAuthModal();
+        }, 500);
+    } else {
+        // Если есть токен, проверяем его валидность
+        checkAuthStatus();
     }
 }
 
+// И ВЫЗЫВАЙТЕ в DOMContentLoaded:
+document.addEventListener('DOMContentLoaded', function () {
+    console.log('🚀 DOM loaded, initializing...');
+    initializeEventListeners();
+    initAuth(); // Сначала авторизация
+    initializeDashboard(); // Потом дашборд
+});
+
 // Вызывать при загрузке
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     initAuth();
     // остальная инициализация...
 });

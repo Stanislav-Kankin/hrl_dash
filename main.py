@@ -8,10 +8,11 @@ from pydantic import BaseModel
 from fastapi.security import HTTPBearer
 from app.schemas.auth import UserRegister, UserLogin, Token, UserResponse
 from app.services.auth_service import auth_service
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, get_current_admin
 import os
 import logging
 from fastapi.middleware.cors import CORSMiddleware
+
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -349,18 +350,18 @@ async def find_users(current_user: dict = Depends(get_current_user)):
 
 # Админ эндпоинты для управления белым списком
 @app.get("/api/admin/allowed-emails")
-async def get_allowed_emails(current_user: dict = Depends(get_current_user)):
+async def get_allowed_emails(current_user: dict = Depends(get_current_admin)):
     """Получить список разрешенных email"""
     return {"allowed_emails": auth_service.get_allowed_emails()}
 
 @app.post("/api/admin/add-allowed-email")
-async def add_allowed_email(request: EmailRequest, current_user: dict = Depends(get_current_user)):
+async def add_allowed_email(request: EmailRequest, current_user: dict = Depends(get_current_admin)):
     """Добавить email в белый список"""
     auth_service.add_allowed_email(request.email)
     return {"message": f"Email {request.email} добавлен в разрешенные"}
 
 @app.post("/api/admin/remove-allowed-email")
-async def remove_allowed_email(request: EmailRequest, current_user: dict = Depends(get_current_user)):
+async def remove_allowed_email(request: EmailRequest, current_user: dict = Depends(get_current_admin)):
     """Удалить email из белого списка"""
     auth_service.remove_allowed_email(request.email)
     return {"message": f"Email {request.email} удален из разрешенных"}
