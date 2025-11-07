@@ -14,6 +14,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 class AuthService:
     def __init__(self):
         self.users_db = {}  # Временное хранилище
+        self.ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
     
     def verify_password(self, plain_password, hashed_password):
         return pwd_context.verify(plain_password, hashed_password)
