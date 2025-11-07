@@ -13,53 +13,53 @@ class BitrixAPI {
     }
 
     static async makeRequest(url, options = {}) {
-        try {
-            // Для публичных эндпоинтов не требуем авторизации
-            const isPublicEndpoint = url.includes('/api/users-list') ||
-                url.includes('/api/stats/detailed') ||
-                url.includes('/api/connection-test') ||
-                url.includes('/api/auth/');
-
-            if (!isPublicEndpoint && !this.authToken) {
-                throw new Error('Authentication required');
-            }
-
-            const defaultOptions = {
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...options.headers
-                }
-            };
-
-            // Добавляем авторизацию только если есть токен
-            if (this.authToken) {
-                defaultOptions.headers['Authorization'] = `Bearer ${this.authToken}`;
-            }
-
-            console.log('🔐 Making request to:', url, 'with auth:', !!this.authToken);
-
-            const response = await fetch(url, { ...defaultOptions, ...options });
-
-            if (response.status === 401) {
-                this.clearAuthToken();
-                throw new Error('Authentication required - please login again');
-            }
-
-            if (response.status === 403) {
-                throw new Error('Access forbidden - insufficient permissions');
-            }
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-            }
-
-            return response;
-        } catch (error) {
-            console.error('❌ API request failed:', error);
-            throw error;
+    try {
+        // Для публичных эндпоинтов не требуем авторизации
+        const isPublicEndpoint = url.includes('/api/users-list') || 
+                               url.includes('/api/stats/detailed') || 
+                               url.includes('/api/connection-test') ||
+                               url.includes('/api/auth/');  // 👈 ДОБАВЬТЕ ЭТУ СТРОКУ!
+        
+        if (!isPublicEndpoint && !this.authToken) {
+            throw new Error('Authentication required');
         }
+
+        const defaultOptions = {
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers
+            }
+        };
+
+        // Добавляем авторизацию только если есть токен И это не публичный эндпоинт
+        if (this.authToken && !url.includes('/api/auth/')) {
+            defaultOptions.headers['Authorization'] = `Bearer ${this.authToken}`;
+        }
+
+        console.log('🔐 Making request to:', url, 'with auth:', !!this.authToken);
+        
+        const response = await fetch(url, { ...defaultOptions, ...options });
+        
+        if (response.status === 401) {
+            this.clearAuthToken();
+            throw new Error('Authentication required - please login again');
+        }
+        
+        if (response.status === 403) {
+            throw new Error('Access forbidden - insufficient permissions');
+        }
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+        }
+
+        return response;
+    } catch (error) {
+        console.error('❌ API request failed:', error);
+        throw error;
     }
+}
 
     // Аутентификация
     static async getCurrentUser() {
