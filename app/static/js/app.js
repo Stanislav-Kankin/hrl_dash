@@ -230,24 +230,44 @@ async function register(event) {
 function updateUIForAuth() {
     const header = document.querySelector('.header');
     if (header && currentUser) {
-        // Добавляем информацию о пользователе в header
-        const userInfo = document.createElement('div');
-        userInfo.style.cssText = 'position: absolute; top: 20px; right: 20px; color: white; text-align: right;';
+        // Удаляем старую информацию если есть
+        const oldUserInfo = header.querySelector('.user-info');
+        if (oldUserInfo) {
+            oldUserInfo.remove();
+        }
         
-        // Проверяем является ли пользователь администратором (по email)
-        const isAdmin = currentUser.email === 'stanislav.kankin@mail.ru' || currentUser.email === 'admin@hrlk.ru';
+        // Добавляем информацию о пользователе
+        const userInfo = document.createElement('div');
+        userInfo.className = 'user-info';
+        userInfo.style.cssText = `
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            text-align: right;
+            background: rgba(255,255,255,0.1);
+            padding: 10px 15px;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+        `;
         
         userInfo.innerHTML = `
-            <div>👤 ${currentUser.full_name || currentUser.email}</div>
-            <div style="display: flex; gap: 5px; margin-top: 5px;">
-                ${isAdmin ? `<button onclick="showAdminPanel()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px;">
-                    Админ
-                </button>` : ''}
-                <button onclick="logout()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px;">
-                    Выйти
-                </button>
-            </div>
+            <div style="font-size: 14px; margin-bottom: 5px;">👤 ${currentUser.full_name || currentUser.email}</div>
+            <button onclick="logout()" style="
+                background: rgba(255,255,255,0.3);
+                border: none;
+                color: white;
+                padding: 5px 12px;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 12px;
+                transition: all 0.3s;
+            " onmouseover="this.style.background='rgba(255,255,255,0.5)'" 
+            onmouseout="this.style.background='rgba(255,255,255,0.3)'">
+                Выйти
+            </button>
         `;
+        
         header.style.position = 'relative';
         header.appendChild(userInfo);
     }

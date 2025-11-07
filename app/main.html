@@ -179,7 +179,7 @@
             <div class="modal-body">
                 <div id="loginForm">
                     <h3>Вход</h3>
-                   <form onsubmit="return login(event)">
+                    <form onsubmit="return login(event)">
                         <div class="form-group">
                             <label>Email:</label>
                             <input type="email" id="loginEmail" required>
@@ -322,61 +322,112 @@
         .modal-body a:hover {
             text-decoration: underline;
         }
+
+        /* Индикатор загрузки */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            backdrop-filter: blur(5px);
+        }
+
+        .loading-spinner {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
     </style>
     <script>
-// Функции для управления белым списком
-function showAdminPanel() {
-    alert('Админ панель будет доступна после входа в систему');
-}
-
-function addAllowedEmail() {
-    alert('Функция добавления email будет доступна после входа в систему');
-}
-
-function removeAllowedEmail() {
-    alert('Функция удаления email будет доступна после входа в систему');
-}
-
-// Временные функции для админки
-async function adminAddEmail() {
-    const email = prompt('Введите email для добавления в белый список:');
-    if (email) {
-        try {
-            const response = await fetch('/api/admin/add-allowed-email', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + (localStorage.getItem('authToken') || '')
-                },
-                body: JSON.stringify({ email: email })
-            });
-            const data = await response.json();
-            alert(data.message || 'Email добавлен');
-        } catch (error) {
-            alert('Ошибка: ' + error.message);
+        // Функции для управления белым списком
+        function showAdminPanel() {
+            alert('Админ панель будет доступна после входа в систему');
         }
-    }
-}
 
-async function adminShowEmails() {
-    try {
-        const response = await fetch('/api/admin/allowed-emails', {
-            headers: {
-                'Authorization': 'Bearer ' + (localStorage.getItem('authToken') || '')
+        function addAllowedEmail() {
+            alert('Функция добавления email будет доступна после входа в систему');
+        }
+
+        function removeAllowedEmail() {
+            alert('Функция удаления email будет доступна после входа в систему');
+        }
+
+        // Временные функции для админки
+        async function adminAddEmail() {
+            const email = prompt('Введите email для добавления в белый список:');
+            if (email) {
+                try {
+                    const response = await fetch('/api/admin/add-allowed-email', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + (localStorage.getItem('authToken') || '')
+                        },
+                        body: JSON.stringify({ email: email })
+                    });
+                    const data = await response.json();
+                    alert(data.message || 'Email добавлен');
+                } catch (error) {
+                    alert('Ошибка: ' + error.message);
+                }
             }
-        });
-        const data = await response.json();
-        
-        let message = 'Разрешенные email:\n\n';
-        data.allowed_emails.forEach(email => {
-            message += '• ' + email + '\n';
-        });
-        alert(message);
-    } catch (error) {
-        alert('Ошибка: ' + error.message);
-    }
-}
-</script>
+        }
+
+        async function adminShowEmails() {
+            try {
+                const response = await fetch('/api/admin/allowed-emails', {
+                    headers: {
+                        'Authorization': 'Bearer ' + (localStorage.getItem('authToken') || '')
+                    }
+                });
+                const data = await response.json();
+
+                let message = 'Разрешенные email:\n\n';
+                data.allowed_emails.forEach(email => {
+                    message += '• ' + email + '\n';
+                });
+                alert(message);
+            } catch (error) {
+                alert('Ошибка: ' + error.message);
+            }
+        }
+    </script>
+
+<!-- Индикатор загрузки -->
+<div id="loadingOverlay" class="loading-overlay">
+    <div class="loading-spinner">
+        <div class="spinner"></div>
+        <div id="loadingText">Загрузка данных...</div>
+    </div>
+</div>
 </body>
 
 </html>
