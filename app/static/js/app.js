@@ -499,3 +499,18 @@ window.addAllowedEmail = async function() {
         }
     }
 };
+
+// Добавить принудительный показ формы авторизации
+function initAuth() {
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+        console.log('🔐 No auth token - showing login form');
+        setTimeout(() => showAuthModal(), 1000);
+    }
+}
+
+// Вызывать при загрузке
+document.addEventListener('DOMContentLoaded', function() {
+    initAuth();
+    // остальная инициализация...
+});

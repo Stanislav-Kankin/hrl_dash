@@ -138,4 +138,15 @@ class BitrixAPI {
         });
         return await response.json();
     }
+
+    static async makeRequest(url, options = {}) {
+    const response = await fetch(url, options);
+    
+    if (response.status === 403) {
+        localStorage.removeItem('auth_token');
+        throw new Error('Сессия истекла. Пожалуйста, войдите снова.');
+    }
+    
+    return response;
+}
 }
