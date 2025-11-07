@@ -157,7 +157,7 @@ function showRegister() {
     document.getElementById('registerForm').style.display = 'block';
 }
 
-aasync function login(event) {
+async function login(event) {
     event.preventDefault();
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
@@ -444,6 +444,9 @@ function displayUserStats(statsData) {
 // Функции фильтров
 async function applyFilters() {
     try {
+        // Показываем индикатор загрузки
+        showLoading('resultsBody', 'Загрузка данных...');
+        
         const periodSelect = document.getElementById('periodSelect');
         const period = periodSelect.value;
         const employeeFilter = document.getElementById('employeesSelect').value;
@@ -462,7 +465,6 @@ async function applyFilters() {
                 filters.start_date = startDate;
                 filters.end_date = endDate;
                 
-                // Проверяем что начальная дата не больше конечной
                 if (new Date(startDate) > new Date(endDate)) {
                     alert('Начальная дата не может быть больше конечной даты');
                     return;
