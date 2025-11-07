@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timedelta
 from app.services.bitrix_service import BitrixService
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 from fastapi.security import HTTPBearer
 
@@ -29,6 +30,21 @@ static_dir = os.path.join(current_dir, "app", "static")
 
 # Монтируем статические файлы из папки app/static
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+class EmailRequest(BaseModel):
+    email: str
+
+@app.post("/api/admin/add-allowed-email")
+async def add_allowed_email(request: EmailRequest, current_user: dict = Depends(get_current_user)):
+    """Добавить email в белый список"""
+    auth_service.add_allowed_email(request.email)
+    return {"message": f"Email {request.email} добавлен в разрешенные"}
+
+@app.post("/api/admin/remove-allowed-email")
+async def remove_allowed_email(request: EmailRequest, current_user: dict = Depends(get_current_user)):
+    """Удалить email из белого списка"""
+    auth_service.remove_allowed_email(request.email)
+    return {"message": f"Email {request.email} удален из разрешенных"}
 
 # Эндпоинты аутентификации (публичные)
 @app.post("/api/auth/register", response_model=UserResponse)
