@@ -1,13 +1,13 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from typing import Optional
 
 class UserRegister(BaseModel):
-    email: EmailStr
+    email: str  # Заменили EmailStr на str
     password: str
     full_name: Optional[str] = None
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    email: str  # Заменили EmailStr на str
     password: str
 
 class Token(BaseModel):
