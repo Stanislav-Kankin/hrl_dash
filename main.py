@@ -365,6 +365,26 @@ async def find_users(current_user: dict = Depends(get_current_user)):
         logger.error(f"Error in find-users: {str(e)}")
         return {"error": str(e)}
 
+# Добавьте эти эндпоинты после существующих
+
+@app.get("/api/admin/allowed-emails")
+async def get_allowed_emails(current_user: dict = Depends(get_current_user)):
+    """Получить список разрешенных email (только для просмотра)"""
+    # Можно добавить проверку is_admin если нужно
+    return {"allowed_emails": auth_service.get_allowed_emails()}
+
+@app.post("/api/admin/add-allowed-email")
+async def add_allowed_email(email: str, current_user: dict = Depends(get_current_user)):
+    """Добавить email в белый список"""
+    auth_service.add_allowed_email(email)
+    return {"message": f"Email {email} добавлен в разрешенные"}
+
+@app.post("/api/admin/remove-allowed-email")
+async def remove_allowed_email(email: str, current_user: dict = Depends(get_current_user)):
+    """Удалить email из белого списка"""
+    auth_service.remove_allowed_email(email)
+    return {"message": f"Email {email} удален из разрешенных"}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

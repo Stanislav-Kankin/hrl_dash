@@ -157,7 +157,7 @@ function showRegister() {
     document.getElementById('registerForm').style.display = 'block';
 }
 
-async function login(event) {
+aasync function login(event) {
     event.preventDefault();
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
@@ -169,12 +169,27 @@ async function login(event) {
             BitrixAPI.setAuthToken(data.access_token);
             await checkAuthAndInitialize();
             hideAuthModal();
+            
+            // Очищаем поля после успешного входа
+            document.getElementById('loginEmail').value = '';
+            document.getElementById('loginPassword').value = '';
         } else {
-            alert('Ошибка входа: ' + (data.detail || 'Неверные данные'));
+            // Обработка ошибок входа
+            const errorMsg = data.detail || 'Неизвестная ошибка';
+            if (errorMsg.includes('Incorrect email or password')) {
+                alert('❌ Неверный email или пароль');
+            } else if (errorMsg.includes('Account pending approval')) {
+                alert('❌ Аккаунт ожидает подтверждения\n\nПожалуйста, дождитесь подтверждения администратора.');
+            } else {
+                alert('❌ Ошибка входа: ' + errorMsg);
+            }
         }
     } catch (error) {
-        alert('Ошибка сети: ' + error.message);
+        console.error('Login error:', error);
+        alert('❌ Ошибка сети: ' + error.message);
     }
+    
+    return false; // Предотвращаем отправку формы
 }
 
 async function register(event) {
@@ -187,15 +202,29 @@ async function register(event) {
         const data = await BitrixAPI.register(email, password, full_name);
         
         if (data.email) {
-            alert('Регистрация успешна! Теперь войдите в систему.');
+            alert('✅ Регистрация успешна! Теперь войдите в систему.');
             showLogin();
             document.getElementById('loginEmail').value = email;
+            document.getElementById('registerEmail').value = '';
+            document.getElementById('registerPassword').value = '';
+            document.getElementById('registerName').value = '';
         } else {
-            alert('Ошибка регистрации: ' + (data.detail || 'Ошибка сервера'));
+            // Обработка ошибок регистрации
+            const errorMsg = data.detail || 'Ошибка сервера';
+            if (errorMsg.includes('Регистрация не разрешена')) {
+                alert('❌ Регистрация не разрешена\n\nЭтот email не находится в списке разрешенных. Пожалуйста, обратитесь к администратору для получения доступа.');
+            } else if (errorMsg.includes('Email уже зарегистрирован')) {
+                alert('❌ Email уже зарегистрирован\n\nЭтот email уже есть в системе. Попробуйте войти или восстановить пароль.');
+            } else {
+                alert('❌ Ошибка регистрации: ' + errorMsg);
+            }
         }
     } catch (error) {
-        alert('Ошибка сети: ' + error.message);
+        console.error('Registration error:', error);
+        alert('❌ Ошибка сети: ' + error.message);
     }
+    
+    return false; // Предотвращаем отправку формы
 }
 
 function updateUIForAuth() {
@@ -204,11 +233,20 @@ function updateUIForAuth() {
         // Добавляем информацию о пользователе в header
         const userInfo = document.createElement('div');
         userInfo.style.cssText = 'position: absolute; top: 20px; right: 20px; color: white; text-align: right;';
+        
+        // Проверяем является ли пользователь администратором (по email)
+        const isAdmin = currentUser.email === 'stanislav.kankin@mail.ru' || currentUser.email === 'admin@hrlk.ru';
+        
         userInfo.innerHTML = `
             <div>👤 ${currentUser.full_name || currentUser.email}</div>
-            <button onclick="logout()" style="margin-top: 5px; background: rgba(255,255,255,0.2); border: none; color: white; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px;">
-                Выйти
-            </button>
+            <div style="display: flex; gap: 5px; margin-top: 5px;">
+                ${isAdmin ? `<button onclick="showAdminPanel()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px;">
+                    Админ
+                </button>` : ''}
+                <button onclick="logout()" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px;">
+                    Выйти
+                </button>
+            </div>
         `;
         header.style.position = 'relative';
         header.appendChild(userInfo);
@@ -628,4 +666,66 @@ function showUserDetails(userId) {
     });
 
     panel.classList.add('active');
+}
+
+// Функции для управления белым списком (для администратора)
+async function showAdminPanel() {
+    try {
+        const response = await BitrixAPI.makeAuthenticatedRequest('/api/admin/allowed-emails');
+        const data = await response.json();
+        
+        let message = '📧 Разрешенные email-адреса:\n\n';
+        data.allowed_emails.forEach(email => {
+            message += `• ${email}\n`;
+        });
+        
+        message += '\nДля добавления/удаления используйте API:';
+        message += '\n- POST /api/admin/add-allowed-email';
+        message += '\n- POST /api/admin/remove-allowed-email';
+        
+        alert(message);
+    } catch (error) {
+        console.error('Admin panel error:', error);
+        alert('❌ Ошибка загрузки списка: ' + error.message);
+    }
+}
+
+async function addAllowedEmail() {
+    const email = prompt('Введите email для добавления в белый список:');
+    if (email) {
+        try {
+            const response = await BitrixAPI.makeAuthenticatedRequest('/api/admin/add-allowed-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email: email })
+            });
+            const data = await response.json();
+            alert('✅ ' + data.message);
+        } catch (error) {
+            console.error('Add email error:', error);
+            alert('❌ Ошибка добавления: ' + error.message);
+        }
+    }
+}
+
+async function removeAllowedEmail() {
+    const email = prompt('Введите email для удаления из белого списка:');
+    if (email) {
+        try {
+            const response = await BitrixAPI.makeAuthenticatedRequest('/api/admin/remove-allowed-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email: email })
+            });
+            const data = await response.json();
+            alert('✅ ' + data.message);
+        } catch (error) {
+            console.error('Remove email error:', error);
+            alert('❌ Ошибка удаления: ' + error.message);
+        }
+    }
 }
