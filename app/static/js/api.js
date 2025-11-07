@@ -13,65 +13,39 @@ class BitrixAPI {
     }
 
     static async makeRequest(url, options = {}) {
-    try {
-        console.log('🔐 Making request to:', url);
-        
-        // ВСЕ эндпоинты аутентификации должны быть публичными
-        const isPublicEndpoint = url.includes('/api/users-list') || 
-                               url.includes('/api/stats/detailed') || 
-                               url.includes('/api/connection-test') ||
-                               url.includes('/api/auth/');
-        
-        console.log('🔐 Is public endpoint:', isPublicEndpoint);
-        console.log('🔐 Has token:', !!this.authToken);
-        
-        // ЕСЛИ это НЕ публичный эндпоинт И нет токена - ошибка
-        if (!isPublicEndpoint && !this.authToken) {
-            throw new Error('Authentication required');
-        }
+        try {
+            console.log('🔐 Making request to:', url);
+            
+            const defaultOptions = {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                }
+            };
 
-        const defaultOptions = {
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
+            // ВСЕГДА добавляем авторизацию если есть токен
+            if (this.authToken) {
+                defaultOptions.headers['Authorization'] = `Bearer ${this.authToken}`;
             }
-        };
 
-        // ВАЖНО: НЕ добавляем Authorization header для эндпоинтов аутентификации
-        // даже если токен есть!
-        if (this.authToken && !url.includes('/api/auth/')) {
-            defaultOptions.headers['Authorization'] = `Bearer ${this.authToken}`;
-            console.log('🔐 Adding Authorization header');
-        } else {
-            console.log('🔐 NOT adding Authorization header (auth endpoint or no token)');
-        }
+            const response = await fetch(url, { ...defaultOptions, ...options });
+            
+            if (response.status === 401) {
+                this.clearAuthToken();
+                throw new Error('Authentication required - please login again');
+            }
 
-        console.log('🔐 Final headers:', defaultOptions.headers);
-        
-        const response = await fetch(url, { ...defaultOptions, ...options });
-        
-        console.log('🔐 Response status:', response.status);
-        
-        if (response.status === 401) {
-            this.clearAuthToken();
-            throw new Error('Authentication required - please login again');
-        }
-        
-        if (response.status === 403) {
-            throw new Error('Access forbidden - insufficient permissions');
-        }
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+            }
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+            return response;
+        } catch (error) {
+            console.error('❌ API request failed:', error);
+            throw error;
         }
-
-        return response;
-    } catch (error) {
-        console.error('❌ API request failed:', error);
-        throw error;
     }
-}
 
     // Аутентификация
     static async getCurrentUser() {
