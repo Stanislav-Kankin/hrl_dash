@@ -81,18 +81,21 @@ class BitrixService:
             return None
 
     async def get_activities(self, days: int = None, start_date: str = None, end_date: str = None, 
-                            user_ids: List[str] = None, activity_types: List[str] = None) -> Optional[List[Dict]]:
-        """Получить ВСЕ активности с поддержкой диапазона дат и кэшированием"""
+                        user_ids: List[str] = None, activity_types: List[str] = None) -> Optional[List[Dict]]:
         try:
             # Создаем ключ для кэша
             cache_key = f"activities_{days}_{start_date}_{end_date}_{'-'.join(user_ids) if user_ids else 'all'}_{'-'.join(activity_types) if activity_types else 'all'}"
             
-            # Проверяем кэш
+            # Проверяем кэш - ВАЖНО: даже если кэш есть, но он пустой - перезапрашиваем
             if cache_key in self._cache:
                 cache_time, cached_data = self._cache[cache_key]
-                if (datetime.now() - cache_time).total_seconds() < self._cache_ttl:
+                cache_age = (datetime.now() - cache_time).total_seconds()
+                # Используем кэш только если он не пустой И не устарел
+                if cached_data and cache_age < self._cache_ttl:
                     logger.info(f"Using cached activities: {len(cached_data)}")
                     return cached_data
+                elif not cached_data:
+                    logger.info("Cache exists but empty - refetching")
 
             # Если не указаны пользователи - используем ТОЛЬКО пресейлов
             if not user_ids:

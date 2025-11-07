@@ -318,6 +318,86 @@ function displayUserStats(statsData) {
     });
 }
 
+window.showUserDetails = function(userId) {
+    console.log('🔍 Showing details for user:', userId);
+    
+    const userStats = currentUserStats[userId];
+    if (!userStats) {
+        alert('❌ Данные пользователя не найдены');
+        return;
+    }
+    
+    const panel = document.getElementById('detailsPanel');
+    if (!panel) {
+        console.error('❌ Details panel not found');
+        return;
+    }
+    
+    // Группируем активности по дням
+    const activitiesByDay = {};
+    userStats.activities.forEach(activity => {
+        const activityDate = new Date(activity.CREATED.replace('Z', '+00:00'));
+        const dateKey = activityDate.toISOString().split('T')[0];
+        
+        if (!activitiesByDay[dateKey]) {
+            activitiesByDay[dateKey] = [];
+        }
+        
+        activitiesByDay[dateKey].push({
+            time: activityDate.toLocaleTimeString('ru-RU'),
+            type: ACTIVITY_TYPES[activity.TYPE_ID]?.name || 'Другое',
+            type_class: ACTIVITY_TYPES[activity.TYPE_ID]?.class || 'badge-task',
+            description: activity.DESCRIPTION || activity.SUBJECT || 'Без описания',
+            type_id: activity.TYPE_ID
+        });
+    });
+    
+    // Сортируем дни по убыванию
+    const sortedDays = Object.keys(activitiesByDay).sort().reverse();
+    
+    let html = `
+        <div class="details-header">
+            <h3>📋 Детализация активностей: ${userStats.user_name}</h3>
+            <button class="quick-btn" onclick="document.getElementById('detailsPanel').classList.remove('active')">✕ Закрыть</button>
+        </div>
+        <div class="details-content">
+    `;
+    
+    sortedDays.forEach(day => {
+        const activities = activitiesByDay[day];
+        const date = new Date(day);
+        const dayName = date.toLocaleDateString('ru-RU', { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+        });
+        
+        html += `
+            <div class="day-group">
+                <div class="day-header">📅 ${dayName} (${activities.length} активностей)</div>
+        `;
+        
+        activities.forEach(activity => {
+            html += `
+                <div class="activity-item">
+                    <span class="activity-time">${activity.time}</span>
+                    <span class="activity-type ${activity.type_class}">${activity.type}</span>
+                    <span class="activity-description">${activity.description}</span>
+                </div>
+            `;
+        });
+        
+        html += `</div>`;
+    });
+    
+    html += `</div>`;
+    panel.innerHTML = html;
+    panel.classList.add('active');
+    
+    console.log('✅ Details panel updated for user:', userId);
+};
+
 function updateUserSelect() {
     const select = document.getElementById('employeesSelect');
     select.innerHTML = '<option value="all">Все сотрудники</option>';
@@ -515,18 +595,31 @@ window.addAllowedEmail = async function () {
 
 // В app.js ЗАМЕНИТЕ функцию initAuth():
 function initAuth() {
-    const token = localStorage.getItem('auth_token');
+    const token = BitrixAPI.authToken;
     console.log('🔐 Auth init, token exists:', !!token);
-
+    
+    const authButton = document.getElementById('authButton');
+    
     if (!token) {
-        console.log('🔐 No auth token - showing login form');
-        // Показываем модальное окно сразу
+        console.log('🔐 No auth token - forcing login form');
+        if (authButton) {
+            authButton.textContent = '🔐 Вход для админа';
+            authButton.onclick = showAuthModal;
+        }
+        // Показываем модальное окно сразу с небольшой задержкой
         setTimeout(() => {
             showAuthModal();
-        }, 500);
+        }, 1000);
     } else {
+        console.log('🔐 Token found, checking validity...');
         // Если есть токен, проверяем его валидность
-        checkAuthStatus();
+        checkAuthStatus().catch(error => {
+            console.error('🔐 Auth check failed:', error);
+            // Если проверка не удалась, показываем форму входа
+            setTimeout(() => {
+                showAuthModal();
+            }, 500);
+        });
     }
 }
 
@@ -536,10 +629,4 @@ document.addEventListener('DOMContentLoaded', function () {
     initializeEventListeners();
     initAuth(); // Сначала авторизация
     initializeDashboard(); // Потом дашборд
-});
-
-// Вызывать при загрузке
-document.addEventListener('DOMContentLoaded', function () {
-    initAuth();
-    // остальная инициализация...
 });

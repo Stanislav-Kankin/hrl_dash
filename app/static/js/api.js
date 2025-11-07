@@ -13,40 +13,52 @@ class BitrixAPI {
     }
 
     static async makeRequest(url, options = {}) {
-        // Для публичных эндпоинтов не требуем авторизации
-        const isPublicEndpoint = url.includes('/api/users-list') || 
-                               url.includes('/api/stats/detailed') || 
-                               url.includes('/api/connection-test');
-        
-        if (!isPublicEndpoint && !this.authToken) {
-            throw new Error('Authentication required');
-        }
+        try {
+            // Для публичных эндпоинтов не требуем авторизации
+            const isPublicEndpoint = url.includes('/api/users-list') ||
+                url.includes('/api/stats/detailed') ||
+                url.includes('/api/connection-test') ||
+                url.includes('/api/auth/');
 
-        const defaultOptions = {
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
+            if (!isPublicEndpoint && !this.authToken) {
+                throw new Error('Authentication required');
             }
-        };
 
-        // Добавляем авторизацию только если есть токен
-        if (this.authToken) {
-            defaultOptions.headers['Authorization'] = `Bearer ${this.authToken}`;
+            const defaultOptions = {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                }
+            };
+
+            // Добавляем авторизацию только если есть токен
+            if (this.authToken) {
+                defaultOptions.headers['Authorization'] = `Bearer ${this.authToken}`;
+            }
+
+            console.log('🔐 Making request to:', url, 'with auth:', !!this.authToken);
+
+            const response = await fetch(url, { ...defaultOptions, ...options });
+
+            if (response.status === 401) {
+                this.clearAuthToken();
+                throw new Error('Authentication required - please login again');
+            }
+
+            if (response.status === 403) {
+                throw new Error('Access forbidden - insufficient permissions');
+            }
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+            }
+
+            return response;
+        } catch (error) {
+            console.error('❌ API request failed:', error);
+            throw error;
         }
-
-        const response = await fetch(url, { ...defaultOptions, ...options });
-        
-        if (response.status === 401) {
-            this.clearAuthToken();
-            throw new Error('Authentication required');
-        }
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-        }
-
-        return response;
     }
 
     // Аутентификация
@@ -79,7 +91,7 @@ class BitrixAPI {
 
     static async getDetailedStats(filters = {}) {
         const params = new URLSearchParams();
-        
+
         if (filters.days) params.append('days', filters.days);
         if (filters.start_date) params.append('start_date', filters.start_date);
         if (filters.end_date) params.append('end_date', filters.end_date);

@@ -524,3 +524,90 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     align-self: flex-end;
     height: fit-content;
 }
+
+/* Добавьте в конец dashboard.css */
+.details-panel {
+    margin-top: 20px;
+    padding: 0;
+    background: #f8f9fa;
+    border-radius: 8px;
+    display: none;
+    border: 1px solid #e9ecef;
+}
+
+.details-panel.active {
+    display: block;
+}
+
+.details-header {
+    background: linear-gradient(135deg, #2c3e50, #34495e);
+    color: white;
+    padding: 20px;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.details-header h3 {
+    margin: 0;
+    font-size: 1.2em;
+}
+
+.details-content {
+    padding: 20px;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.day-group {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: white;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.day-header {
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: #2c3e50;
+    font-size: 1.1em;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.activity-item {
+    padding: 10px;
+    border-bottom: 1px solid #f1f3f4;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.activity-item:last-child {
+    border-bottom: none;
+}
+
+.activity-time {
+    font-weight: 600;
+    color: #495057;
+    min-width: 80px;
+    font-size: 0.9em;
+}
+
+.activity-type {
+    font-size: 0.8em;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-weight: 600;
+    min-width: 100px;
+    text-align: center;
+}
+
+.activity-description {
+    flex: 1;
+    color: #6c757d;
+    font-size: 0.9em;
+}
