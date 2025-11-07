@@ -145,3 +145,17 @@ class BitrixAPI {
         return await response.json();
     }
 }
+
+const API_BASE = 'https://dev-cloud-ksa.ru/api';
+const getAuthHeaders = () => {
+    const token = localStorage.getItem('auth_token');
+    return {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    };
+};
+
+// Используйте в запросах:
+fetch(`${API_BASE}/users-list`, {
+    headers: getAuthHeaders()
+})

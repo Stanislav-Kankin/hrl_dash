@@ -11,6 +11,7 @@ from app.services.auth_service import auth_service
 from app.dependencies import get_current_user
 import os
 import logging
+from fastapi.middleware.cors import CORSMiddleware
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -18,6 +19,14 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Bitrix24 Analytics Dashboard", version="1.0")
 load_dotenv()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://dev-cloud-ksa.ru"],  # Ваши домены
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Инициализируем сервис
 bitrix_service = BitrixService()
