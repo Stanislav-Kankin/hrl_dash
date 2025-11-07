@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     console.log('🚀 Dashboard loading...');
     initializeEventListeners();
     await initializeDashboard();
-    checkAuthStatus();
+    await checkAuthStatus(); // Добавьте await здесь
 });
 
 function initializeEventListeners() {
@@ -55,8 +55,14 @@ async function checkAuthStatus() {
     const token = BitrixAPI.authToken;
     console.log('🔐 Checking auth, token exists:', !!token);
     
+    const authButton = document.getElementById('authButton');
+    
     if (!token) {
         console.log('❌ No token found');
+        if (authButton) {
+            authButton.textContent = '🔐 Вход для админа';
+            authButton.onclick = showAuthModal;
+        }
         return;
     }
 
@@ -68,9 +74,18 @@ async function checkAuthStatus() {
         currentUser = userData;
         console.log('✅ User authenticated:', currentUser);
         updateUIForAuth();
+        
+        if (authButton) {
+            authButton.textContent = `👤 ${currentUser.full_name || currentUser.email} (Выйти)`;
+            authButton.onclick = logout;
+        }
     } catch (error) {
         console.error('🔐 Auth check failed:', error);
         BitrixAPI.clearAuthToken();
+        if (authButton) {
+            authButton.textContent = '🔐 Вход для админа';
+            authButton.onclick = showAuthModal;
+        }
     }
 }
 
@@ -174,48 +189,25 @@ async function register(event) {
 }
 
 function updateUIForAuth() {
-    const header = document.querySelector('.header');
-    if (header && currentUser) {
-        const oldUserInfo = header.querySelector('.user-info');
-        if (oldUserInfo) oldUserInfo.remove();
-        
-        const userInfo = document.createElement('div');
-        userInfo.className = 'user-info';
-        userInfo.style.cssText = `
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            color: white;
-            text-align: right;
-            background: rgba(255,255,255,0.1);
-            padding: 10px 15px;
-            border-radius: 8px;
-            backdrop-filter: blur(10px);
-            z-index: 1000;
-        `;
-        
-        userInfo.innerHTML = `
-            <div style="font-size: 14px; margin-bottom: 5px;">👤 ${currentUser.full_name || currentUser.email}</div>
-            <button onclick="logout()" style="
-                background: rgba(255,255,255,0.3);
-                border: none;
-                color: white;
-                padding: 5px 12px;
-                border-radius: 5px;
-                cursor: pointer;
-                font-size: 12px;
-            ">Выйти</button>
-        `;
-        
-        header.style.position = 'relative';
-        header.appendChild(userInfo);
+    const authButton = document.getElementById('authButton');
+    if (authButton && currentUser) {
+        authButton.textContent = `👤 ${currentUser.full_name || currentUser.email} (Выйти)`;
+        authButton.onclick = logout;
     }
 }
 
 function logout() {
     BitrixAPI.clearAuthToken();
     currentUser = null;
-    location.reload();
+    
+    const authButton = document.getElementById('authButton');
+    if (authButton) {
+        authButton.textContent = '🔐 Вход для админа';
+        authButton.onclick = showAuthModal;
+    }
+    
+    // Не перезагружаем страницу, просто обновляем UI
+    alert('✅ Вы вышли из системы');
 }
 
 // Основные функции
@@ -360,6 +352,7 @@ window.testConnection = async function() {
 window.clearCache = async function() {
     try {
         if (!BitrixAPI.authToken) {
+            alert('❌ Для этой функции требуется авторизация');
             showAuthModal();
             return;
         }
@@ -369,13 +362,20 @@ window.clearCache = async function() {
             await applyFilters();
         }
     } catch (error) {
-        alert('❌ Ошибка: ' + error.message);
+        console.error('Cache clear error:', error);
+        if (error.message.includes('401') || error.message.includes('Authentication')) {
+            alert('❌ Ошибка авторизации. Пожалуйста, войдите снова.');
+            showAuthModal();
+        } else {
+            alert('❌ Ошибка: ' + error.message);
+        }
     }
 };
 
 window.debugUsers = async function() {
     try {
         if (!BitrixAPI.authToken) {
+            alert('❌ Для этой функции требуется авторизация');
             showAuthModal();
             return;
         }
@@ -392,13 +392,20 @@ window.debugUsers = async function() {
 
         alert(message);
     } catch (error) {
-        alert('Ошибка отладки: ' + error.message);
+        console.error('Debug users error:', error);
+        if (error.message.includes('401') || error.message.includes('Authentication')) {
+            alert('❌ Ошибка авторизации. Пожалуйста, войдите снова.');
+            showAuthModal();
+        } else {
+            alert('Ошибка отладки: ' + error.message);
+        }
     }
 };
 
 window.findUsers = async function() {
     try {
         if (!BitrixAPI.authToken) {
+            alert('❌ Для этой функции требуется авторизация');
             showAuthModal();
             return;
         }
@@ -416,34 +423,63 @@ window.findUsers = async function() {
 
         alert(message);
     } catch (error) {
-        alert('Ошибка поиска: ' + error.message);
+        console.error('Find users error:', error);
+        if (error.message.includes('401') || error.message.includes('Authentication')) {
+            alert('❌ Ошибка авторизации. Пожалуйста, войдите снова.');
+            showAuthModal();
+        } else {
+            alert('Ошибка поиска: ' + error.message);
+        }
     }
 };
 
 window.showAdminPanel = async function() {
     try {
         if (!BitrixAPI.authToken) {
+            alert('❌ Для этой функции требуется авторизация');
             showAuthModal();
             return;
         }
         const data = await BitrixAPI.getAllowedEmails();
         let message = '📧 Разрешенные email-адреса:\n\n';
-        data.allowed_emails.forEach(email => {
-            message += `• ${email}\n`;
-        });
         
-        const addEmail = prompt(message + '\n\nВведите email для добавления (или отмена):');
-        if (addEmail) {
-            await BitrixAPI.addAllowedEmail(addEmail);
-            alert('✅ Email добавлен в белый список');
+        if (data.allowed_emails && data.allowed_emails.length > 0) {
+            data.allowed_emails.forEach(email => {
+                message += `• ${email}\n`;
+            });
+        } else {
+            message += 'Нет разрешенных email-адресов\n';
+        }
+        
+        const action = prompt(message + '\n\nВведите:\n1 - для добавления email\n2 - для удаления email\n(или Отмена для выхода)');
+        
+        if (action === '1') {
+            const addEmail = prompt('Введите email для добавления в белый список:');
+            if (addEmail) {
+                await BitrixAPI.addAllowedEmail(addEmail);
+                alert('✅ Email добавлен в белый список');
+            }
+        } else if (action === '2') {
+            const removeEmail = prompt('Введите email для удаления из белого списка:');
+            if (removeEmail) {
+                await BitrixAPI.removeAllowedEmail(removeEmail);
+                alert('✅ Email удален из белого списка');
+            }
         }
     } catch (error) {
-        alert('❌ Ошибка: ' + error.message);
+        console.error('Admin panel error:', error);
+        if (error.message.includes('401') || error.message.includes('Authentication')) {
+            alert('❌ Ошибка авторизации. Пожалуйста, войдите снова.');
+            showAuthModal();
+        } else {
+            alert('❌ Ошибка: ' + error.message);
+        }
     }
 };
 
 window.addAllowedEmail = async function() {
     if (!BitrixAPI.authToken) {
+        alert('❌ Для этой функции требуется авторизация');
         showAuthModal();
         return;
     }
@@ -453,100 +489,13 @@ window.addAllowedEmail = async function() {
             await BitrixAPI.addAllowedEmail(email);
             alert('✅ Email добавлен в белый список');
         } catch (error) {
-            alert('❌ Ошибка: ' + error.message);
+            console.error('Add email error:', error);
+            if (error.message.includes('401') || error.message.includes('Authentication')) {
+                alert('❌ Ошибка авторизации. Пожалуйста, войдите снова.');
+                showAuthModal();
+            } else {
+                alert('❌ Ошибка: ' + error.message);
+            }
         }
     }
-};
-
-window.removeAllowedEmail = async function() {
-    if (!BitrixAPI.authToken) {
-        showAuthModal();
-        return;
-    }
-    const email = prompt('Введите email для удаления из белого списка:');
-    if (email) {
-        try {
-            await BitrixAPI.removeAllowedEmail(email);
-            alert('✅ Email удален из белого списка');
-        } catch (error) {
-            alert('❌ Ошибка: ' + error.message);
-        }
-    }
-};
-
-window.toggleQuickAction = function(action) {
-    const buttons = document.querySelectorAll('.quick-btn');
-    buttons.forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
-
-    let activityType = 'all';
-    switch (action) {
-        case 'calls': activityType = '2'; break;
-        case 'comments': activityType = '6'; break;
-        case 'tasks': activityType = '4'; break;
-        case 'meetings': activityType = '1'; break;
-    }
-
-    document.getElementById('activityTypeSelect').value = activityType;
-    applyFilters();
-};
-
-window.showUserDetails = function(userId) {
-    const userStats = currentUserStats[userId];
-    if (!userStats) return;
-
-    const panel = document.getElementById('detailsPanel');
-    if (!panel) return;
-
-    panel.innerHTML = `<h3>Детализация активностей: ${userStats.user_name}</h3>`;
-
-    if (!userStats.activities || userStats.activities.length === 0) {
-        panel.innerHTML += '<p>Нет данных об активностях</p>';
-        panel.classList.add('active');
-        return;
-    }
-
-    const activitiesByDay = {};
-    userStats.activities.forEach(activity => {
-        const date = new Date(activity.CREATED).toLocaleDateString('ru-RU');
-        if (!activitiesByDay[date]) activitiesByDay[date] = [];
-        activitiesByDay[date].push(activity);
-    });
-
-    const sortedDays = Object.keys(activitiesByDay).sort((a, b) =>
-        new Date(b.split('.').reverse().join('-')) - new Date(a.split('.').reverse().join('-'))
-    );
-
-    sortedDays.forEach(date => {
-        const dayGroup = document.createElement('div');
-        dayGroup.className = 'day-group';
-        let dayHTML = `<div class="day-header">📅 ${date}</div>`;
-
-        activitiesByDay[date].sort((a, b) => new Date(a.CREATED) - new Date(b.CREATED));
-
-        activitiesByDay[date].forEach(activity => {
-            const time = new Date(activity.CREATED).toLocaleTimeString('ru-RU', {
-                hour: '2-digit', minute: '2-digit'
-            });
-
-            const activityType = ACTIVITY_TYPES[activity.TYPE_ID] || { name: 'Другое', class: '' };
-            const description = activity.DESCRIPTION ?
-                activity.DESCRIPTION.replace(/\n/g, '<br>').substring(0, 150) +
-                (activity.DESCRIPTION.length > 150 ? '...' : '') :
-                'Нет описания';
-
-            dayHTML += `
-                <div class="activity-item">
-                    <span class="activity-time">${time}</span>
-                    <span class="activity-type ${activityType.class}">${activityType.name}</span>
-                    <span>${description}</span>
-                </div>
-            `;
-        });
-
-        dayGroup.innerHTML = dayHTML;
-        panel.appendChild(dayGroup);
-    });
-
-    panel.classList.add('active');
 };
