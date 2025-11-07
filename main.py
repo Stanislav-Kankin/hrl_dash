@@ -104,7 +104,7 @@ async def health_check():
 
 # Защищенные эндпоинты (требуют аутентификации)
 @app.get("/api/users-list")
-async def get_users_list(current_user: dict = Depends(get_current_user)):
+async def get_users_list():#current_user: dict = Depends(get_current_user)
     """Список сотрудников для фильтров"""
     try:
         users = await bitrix_service.get_presales_users()
@@ -140,7 +140,7 @@ async def get_detailed_stats(
     user_ids: str = None,
     activity_type: str = None,
     include_statistics: bool = False,
-    current_user: dict = Depends(get_current_user)
+    #current_user: dict = Depends(get_current_user)
 ):
     """Получить детальную статистику с опциональной аналитикой"""
     try:
@@ -290,7 +290,7 @@ async def clear_cache(current_user: dict = Depends(get_current_user)):
         return {"success": False, "error": str(e)}
 
 @app.get("/api/connection-test")
-async def test_connection(current_user: dict = Depends(get_current_user)):
+async def test_connection():#current_user: dict = Depends(get_current_user)
     """Тест подключения к Bitrix24"""
     try:
         is_connected = await bitrix_service.test_connection()
