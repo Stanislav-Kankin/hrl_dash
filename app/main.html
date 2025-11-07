@@ -367,60 +367,21 @@
             }
         }
     </style>
-    <script>
-        // Функции для управления белым списком
-        function showAdminPanel() {
-            alert('Админ панель будет доступна после входа в систему');
-        }
+<script>
+    
+    // Функция для показа админ панели (будет переопределена в app.js)
+    function showAdminPanel() {
+        alert('Админ панель будет доступна после входа в систему');
+    }
 
-        function addAllowedEmail() {
-            alert('Функция добавления email будет доступна после входа в систему');
-        }
+    function addAllowedEmail() {
+        alert('Функция добавления email будет доступна после входа в систему');
+    }
 
-        function removeAllowedEmail() {
-            alert('Функция удаления email будет доступна после входа в систему');
-        }
-
-        // Временные функции для админки
-        async function adminAddEmail() {
-            const email = prompt('Введите email для добавления в белый список:');
-            if (email) {
-                try {
-                    const response = await fetch('/api/admin/add-allowed-email', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Bearer ' + (localStorage.getItem('authToken') || '')
-                        },
-                        body: JSON.stringify({ email: email })
-                    });
-                    const data = await response.json();
-                    alert(data.message || 'Email добавлен');
-                } catch (error) {
-                    alert('Ошибка: ' + error.message);
-                }
-            }
-        }
-
-        async function adminShowEmails() {
-            try {
-                const response = await fetch('/api/admin/allowed-emails', {
-                    headers: {
-                        'Authorization': 'Bearer ' + (localStorage.getItem('authToken') || '')
-                    }
-                });
-                const data = await response.json();
-
-                let message = 'Разрешенные email:\n\n';
-                data.allowed_emails.forEach(email => {
-                    message += '• ' + email + '\n';
-                });
-                alert(message);
-            } catch (error) {
-                alert('Ошибка: ' + error.message);
-            }
-        }
-    </script>
+    function removeAllowedEmail() {
+        alert('Функция удаления email будет доступна после входа в систему');
+    }
+</script>
 
 <!-- Индикатор загрузки -->
 <div id="loadingOverlay" class="loading-overlay">

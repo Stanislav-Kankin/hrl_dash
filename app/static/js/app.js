@@ -86,21 +86,34 @@ function initializeEventListeners() {
 
 async function checkAuthAndInitialize() {
     const token = BitrixAPI.authToken;
+    console.log('Checking auth, token exists:', !!token);
+    
     if (!token) {
+        console.log('No token found, showing auth modal');
         showAuthModal();
         return;
     }
 
     try {
+        console.log('Trying to get current user...');
         const userData = await BitrixAPI.getCurrentUser();
+        console.log('User data response:', userData);
+        
         if (userData.error) {
+            console.log('User data error:', userData.error);
             throw new Error(userData.error);
         }
+        
         currentUser = userData;
+        console.log('User authenticated:', currentUser);
         updateUIForAuth();
         await initializeDashboard();
     } catch (error) {
         console.error('Auth check failed:', error);
+        // Если ошибка 401, очищаем токен и показываем модалку
+        if (error.message.includes('Authentication required') || error.message.includes('401')) {
+            BitrixAPI.clearAuthToken();
+        }
         showAuthModal();
     }
 }
@@ -137,6 +150,8 @@ function showAuthModal() {
     const modal = document.getElementById('authModal');
     if (modal) {
         modal.style.display = 'block';
+        // Показываем форму логина по умолчанию
+        showLogin();
     }
 }
 
@@ -163,10 +178,13 @@ async function login(event) {
     const password = document.getElementById('loginPassword').value;
 
     try {
+        console.log('Attempting login for:', email);
         const data = await BitrixAPI.login(email, password);
+        console.log('Login response:', data);
         
         if (data.access_token) {
             BitrixAPI.setAuthToken(data.access_token);
+            console.log('Token set, reinitializing...');
             await checkAuthAndInitialize();
             hideAuthModal();
             
@@ -175,7 +193,7 @@ async function login(event) {
             document.getElementById('loginPassword').value = '';
         } else {
             // Обработка ошибок входа
-            const errorMsg = data.detail || 'Неизвестная ошибка';
+            const errorMsg = data.detail || data.error || 'Неизвестная ошибка';
             if (errorMsg.includes('Incorrect email or password')) {
                 alert('❌ Неверный email или пароль');
             } else if (errorMsg.includes('Account pending approval')) {
@@ -199,7 +217,9 @@ async function register(event) {
     const full_name = document.getElementById('registerName').value;
 
     try {
+        console.log('Attempting registration for:', email);
         const data = await BitrixAPI.register(email, password, full_name);
+        console.log('Registration response:', data);
         
         if (data.email) {
             alert('✅ Регистрация успешна! Теперь войдите в систему.');
@@ -210,7 +230,7 @@ async function register(event) {
             document.getElementById('registerName').value = '';
         } else {
             // Обработка ошибок регистрации
-            const errorMsg = data.detail || 'Ошибка сервера';
+            const errorMsg = data.detail || data.error || 'Ошибка сервера';
             if (errorMsg.includes('Регистрация не разрешена')) {
                 alert('❌ Регистрация не разрешена\n\nЭтот email не находится в списке разрешенных. Пожалуйста, обратитесь к администратору для получения доступа.');
             } else if (errorMsg.includes('Email уже зарегистрирован')) {
@@ -701,33 +721,44 @@ async function showAdminPanel() {
             message += `• ${email}\n`;
         });
         
-        message += '\nДля добавления/удаления используйте API:';
-        message += '\n- POST /api/admin/add-allowed-email';
-        message += '\n- POST /api/admin/remove-allowed-email';
+        message += '\nДля добавления/удаления используйте кнопки ниже:';
         
-        alert(message);
+        const addEmail = prompt(message + '\n\nВведите email для добавления (или отмена):');
+        if (addEmail) {
+            await addAllowedEmail(addEmail);
+        }
     } catch (error) {
         console.error('Admin panel error:', error);
-        alert('❌ Ошибка загрузки списка: ' + error.message);
+        if (error.message.includes('Authentication required') || error.message.includes('401')) {
+            alert('❌ Требуется авторизация для доступа к админ панели');
+            showAuthModal();
+        } else {
+            alert('❌ Ошибка загрузки списка: ' + error.message);
+        }
     }
 }
 
-async function addAllowedEmail() {
-    const email = prompt('Введите email для добавления в белый список:');
-    if (email) {
+async function addAllowedEmail(email = null) {
+    const emailToAdd = email || prompt('Введите email для добавления в белый список:');
+    if (emailToAdd) {
         try {
             const response = await BitrixAPI.makeAuthenticatedRequest('/api/admin/add-allowed-email', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ email: email })
+                body: JSON.stringify({ email: emailToAdd })
             });
             const data = await response.json();
             alert('✅ ' + data.message);
         } catch (error) {
             console.error('Add email error:', error);
-            alert('❌ Ошибка добавления: ' + error.message);
+            if (error.message.includes('Authentication required') || error.message.includes('401')) {
+                alert('❌ Требуется авторизация');
+                showAuthModal();
+            } else {
+                alert('❌ Ошибка добавления: ' + error.message);
+            }
         }
     }
 }
@@ -747,7 +778,12 @@ async function removeAllowedEmail() {
             alert('✅ ' + data.message);
         } catch (error) {
             console.error('Remove email error:', error);
-            alert('❌ Ошибка удаления: ' + error.message);
+            if (error.message.includes('Authentication required') || error.message.includes('401')) {
+                alert('❌ Требуется авторизация');
+                showAuthModal();
+            } else {
+                alert('❌ Ошибка удаления: ' + error.message);
+            }
         }
     }
 }
