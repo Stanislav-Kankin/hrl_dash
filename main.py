@@ -34,18 +34,6 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 class EmailRequest(BaseModel):
     email: str
 
-@app.post("/api/admin/add-allowed-email")
-async def add_allowed_email(request: EmailRequest, current_user: dict = Depends(get_current_user)):
-    """Добавить email в белый список"""
-    auth_service.add_allowed_email(request.email)
-    return {"message": f"Email {request.email} добавлен в разрешенные"}
-
-@app.post("/api/admin/remove-allowed-email")
-async def remove_allowed_email(request: EmailRequest, current_user: dict = Depends(get_current_user)):
-    """Удалить email из белого списка"""
-    auth_service.remove_allowed_email(request.email)
-    return {"message": f"Email {request.email} удален из разрешенных"}
-
 # Эндпоинты аутентификации (публичные)
 @app.post("/api/auth/register", response_model=UserResponse)
 async def register(user_data: UserRegister):
@@ -104,7 +92,7 @@ async def health_check():
 
 # Защищенные эндпоинты (требуют аутентификации)
 @app.get("/api/users-list")
-async def get_users_list(urrent_user: dict = Depends(get_current_user)):#current_user: dict = Depends(get_current_user)
+async def get_users_list(current_user: dict = Depends(get_current_user)):  # ИСПРАВЛЕНО: было 'urrent_user'
     """Список сотрудников для фильтров"""
     try:
         users = await bitrix_service.get_presales_users()
@@ -140,7 +128,7 @@ async def get_detailed_stats(
     user_ids: str = None,
     activity_type: str = None,
     include_statistics: bool = False,
-    #current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)  # ВОССТАНОВЛЕНА авторизация
 ):
     """Получить детальную статистику с опциональной аналитикой"""
     try:
@@ -290,7 +278,7 @@ async def clear_cache(current_user: dict = Depends(get_current_user)):
         return {"success": False, "error": str(e)}
 
 @app.get("/api/connection-test")
-async def test_connection():#current_user: dict = Depends(get_current_user)
+async def test_connection(current_user: dict = Depends(get_current_user)):  # ВОССТАНОВЛЕНА авторизация
     """Тест подключения к Bitrix24"""
     try:
         is_connected = await bitrix_service.test_connection()
@@ -368,7 +356,7 @@ async def find_users(current_user: dict = Depends(get_current_user)):
                         "LAST_NAME": user.get('LAST_NAME', ''),
                         "WORK_POSITION": user.get('WORK_POSITION', ''),
                         "FULL_NAME": full_name
-                    })
+                    });
                     break
         
         return {
@@ -381,25 +369,23 @@ async def find_users(current_user: dict = Depends(get_current_user)):
         logger.error(f"Error in find-users: {str(e)}")
         return {"error": str(e)}
 
-# Добавьте эти эндпоинты после существующих
-
+# Админ эндпоинты для управления белым списком
 @app.get("/api/admin/allowed-emails")
 async def get_allowed_emails(current_user: dict = Depends(get_current_user)):
     """Получить список разрешенных email (только для просмотра)"""
-    # Можно добавить проверку is_admin если нужно
     return {"allowed_emails": auth_service.get_allowed_emails()}
 
 @app.post("/api/admin/add-allowed-email")
-async def add_allowed_email(email: str, current_user: dict = Depends(get_current_user)):
+async def add_allowed_email(request: EmailRequest, current_user: dict = Depends(get_current_user)):
     """Добавить email в белый список"""
-    auth_service.add_allowed_email(email)
-    return {"message": f"Email {email} добавлен в разрешенные"}
+    auth_service.add_allowed_email(request.email)
+    return {"message": f"Email {request.email} добавлен в разрешенные"}
 
 @app.post("/api/admin/remove-allowed-email")
-async def remove_allowed_email(email: str, current_user: dict = Depends(get_current_user)):
+async def remove_allowed_email(request: EmailRequest, current_user: dict = Depends(get_current_user)):
     """Удалить email из белого списка"""
-    auth_service.remove_allowed_email(email)
-    return {"message": f"Email {email} удален из разрешенных"}
+    auth_service.remove_allowed_email(request.email)
+    return {"message": f"Email {request.email} удален из разрешенных"}
 
 if __name__ == "__main__":
     import uvicorn
