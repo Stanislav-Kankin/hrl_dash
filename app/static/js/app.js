@@ -52,14 +52,8 @@ function initializeEventListeners() {
 }
 
 async function checkAuthAndInitialize() {
-    console.log('🔐 Forcing auth modal...');
+    if (authChecked) return;
     
-    // ПРИНУДИТЕЛЬНО ПОКАЗЫВАЕМ ФОРМУ АВТОРИЗАЦИИ
-    showAuthModal();
-    return;
-
-    // Весь остальной код ниже - закомментирован
-    /*
     const token = BitrixAPI.authToken;
     console.log('🔐 Checking auth, token exists:', !!token);
     
@@ -86,7 +80,6 @@ async function checkAuthAndInitialize() {
         showAuthModal();
         authChecked = true;
     }
-    */
 }
 
 async function initializeDashboard() {
