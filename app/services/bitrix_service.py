@@ -11,7 +11,6 @@ class BitrixService:
     def __init__(self):
         self.webhook_url = os.getenv("BITRIX_WEBHOOK_URL")
         self.session = None
-        self.bitrix_session = None  # ← ОТДЕЛЬНАЯ СЕССИЯ ДЛЯ BITRIX БЕЗ JWT
         self._cache = {}
         self._cache_ttl = 300  # 5 минут кэширования
 
@@ -21,33 +20,23 @@ class BitrixService:
             timeout = aiohttp.ClientTimeout(total=30)
             self.session = aiohttp.ClientSession(timeout=timeout)
 
-    async def ensure_bitrix_session(self):
-        """Создает сессию для Bitrix без JWT заголовков"""
-        if self.bitrix_session is None or self.bitrix_session.closed:
-            timeout = aiohttp.ClientTimeout(total=30)
-            self.bitrix_session = aiohttp.ClientSession(timeout=timeout)
-
     async def close_session(self):
-        """Закрывает обе сессии"""
+        """Закрывает сессию"""
         if self.session and not self.session.closed:
             await self.session.close()
             self.session = None
-        if self.bitrix_session and not self.bitrix_session.closed:
-            await self.bitrix_session.close()
-            self.bitrix_session = None
 
     async def make_bitrix_request(self, method: str, params: Dict = None) -> Optional[Dict]:
-        """Выполняет запрос к Bitrix24 API БЕЗ JWT"""
+        """Выполняет запрос к Bitrix24 API"""
         if not self.webhook_url:
             logger.error("BITRIX_WEBHOOK_URL не настроен")
             return None
 
-        await self.ensure_bitrix_session()  # ← Используем отдельную сессию для Bitrix
+        await self.ensure_session()
         
         url = f"{self.webhook_url}/{method}"
         try:
-            # ВАЖНО: не добавляем никакие заголовки авторизации!
-            async with self.bitrix_session.get(url, params=params) as response:
+            async with self.session.get(url, params=params) as response:
                 if response.status == 200:
                     data = await response.json()
                     if 'result' in data:
@@ -56,7 +45,7 @@ class BitrixService:
                         logger.error(f"Bitrix API error: {data['error']}")
                         return None
                 else:
-                    logger.error(f"HTTP error {response.status}")
+                    logger.error(f"HTTP error {response.status} for {url}")
                     return None
         except asyncio.TimeoutError:
             logger.error(f"Timeout error for method {method}")
@@ -69,6 +58,9 @@ class BitrixService:
         """Проверяет подключение к Bitrix24"""
         try:
             result = await self.make_bitrix_request("user.current")
+            print(f"🔗 Test connection result: {result is not None}")
+            if result:
+                print(f"👤 Connected as: {result.get('NAME')} {result.get('LAST_NAME')}")
             return result is not None
         except Exception as e:
             logger.error(f"Connection test failed: {str(e)}")
@@ -82,6 +74,7 @@ class BitrixService:
                 params['ACTIVE'] = 'true'
             
             users = await self.make_bitrix_request("user.get", params)
+            print(f"👥 Found {len(users) if users else 0} users")
             return users
         except Exception as e:
             logger.error(f"Error getting users: {str(e)}")
@@ -106,6 +99,7 @@ class BitrixService:
                 presales_users = await self.get_presales_users()
                 if presales_users:
                     user_ids = [str(user['ID']) for user in presales_users]
+                    print(f"🎯 Using presales users: {user_ids}")
             
             # Определяем даты периода
             if start_date and end_date:
@@ -125,7 +119,7 @@ class BitrixService:
             start = 0
             
             logger.info(f"Fetching activities from {start_date_str} to {end_date_str}")
-            
+
             while True:
                 params = {
                     'filter[>=CREATED]': start_date_str,
@@ -143,13 +137,7 @@ class BitrixService:
                 
                 # Дополнительные параметры
                 params['order[CREATED]'] = 'DESC'
-                params['select[0]'] = 'ID'
-                params['select[1]'] = 'CREATED'
-                params['select[2]'] = 'AUTHOR_ID'
-                params['select[3]'] = 'DESCRIPTION'
-                params['select[4]'] = 'TYPE_ID'
-                params['select[5]'] = 'SUBJECT'
-                params['select[6]'] = 'PROVIDER_ID'
+                params['select[]'] = ['ID', 'CREATED', 'AUTHOR_ID', 'DESCRIPTION', 'TYPE_ID', 'SUBJECT', 'PROVIDER_ID']
                 
                 # Делаем запрос к Bitrix24
                 activities = await self.make_bitrix_request("crm.activity.list", params)
@@ -163,7 +151,7 @@ class BitrixService:
                     break
                     
                 all_activities.extend(activities)
-                logger.info(f"Received {len(activities)} activities, total: {len(all_activities)}")
+                print(f"📥 Received {len(activities)} activities, total: {len(all_activities)}")
                 
                 # Bitrix24 возвращает по 50 записей, если получили меньше - значит это конец
                 if len(activities) < 50:
@@ -174,7 +162,7 @@ class BitrixService:
                 # Небольшая задержка чтобы не перегружать API
                 await asyncio.sleep(0.1)
             
-            logger.info(f"✅ Total activities received: {len(all_activities)}")
+            print(f"✅ Total activities received: {len(all_activities)}")
             
             # Сохраняем в кэш
             self._cache[cache_key] = (datetime.now(), all_activities)
@@ -195,9 +183,7 @@ class BitrixService:
                     return cached_data
 
             # Жестко задаем ID всех найденных пресейл сотрудников
-            known_presales_ids = [
-                '8860', '8988', '17087', '17919', '17395', '18065', '14255'
-            ]
+            known_presales_ids = ['8860', '8988', '17087', '17919', '17395', '18065', '14255']
             
             presales_users = []
             
@@ -206,9 +192,9 @@ class BitrixService:
                 user = await self.get_user_by_id(user_id)
                 if user:
                     presales_users.append(user)
-                    logger.info(f"Found presales user: {user.get('NAME')} {user.get('LAST_NAME')} - {user.get('WORK_POSITION', '')} - ID: {user.get('ID')}")
+                    print(f"👤 Found presales user: {user.get('NAME')} {user.get('LAST_NAME')} - ID: {user.get('ID')}")
             
-            logger.info(f"Final presales users count: {len(presales_users)}")
+            print(f"🎯 Final presales users count: {len(presales_users)}")
             
             # Сохраняем в кэш
             self._cache[cache_key] = (datetime.now(), presales_users)
@@ -235,7 +221,10 @@ class BitrixService:
         activities = await self.get_activities(days=days, start_date=start_date, end_date=end_date, user_ids=user_ids)
         
         if not activities:
+            print("📊 No activities found for statistics")
             return {}
+        
+        print(f"📊 Processing statistics for {len(activities)} activities")
         
         # Группировка по дням
         daily_stats = {}
@@ -286,7 +275,7 @@ class BitrixService:
         for day_stat in sorted_daily_stats:
             weekday_stats[day_stat['day_of_week']] += day_stat['total']
         
-        return {
+        result = {
             'total_activities': len(activities),
             'daily_stats': sorted_daily_stats,
             'hourly_stats': hourly_stats,
@@ -297,6 +286,9 @@ class BitrixService:
                 'end': sorted_daily_stats[-1]['date'] if sorted_daily_stats else ''
             }
         }
+        
+        print(f"📈 Statistics ready: {len(activities)} activities, {len(sorted_daily_stats)} days")
+        return result
 
     def clear_cache(self):
         """Очищает кэш"""
