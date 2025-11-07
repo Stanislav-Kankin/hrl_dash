@@ -108,6 +108,14 @@ async function initializeDashboard() {
 
         ActivityCharts.initCharts();
         await loadUsersList();
+        
+        // ПРОВЕРЯЕМ АВТОРИЗАЦИЮ ПЕРЕД ЗАГРУЗКОЙ ДАННЫХ
+        if (!BitrixAPI.authToken) {
+            console.log('🔐 User not authenticated - hiding data');
+            showLoginPrompt();
+            return;
+        }
+        
         await applyFilters();
 
     } catch (error) {
@@ -115,6 +123,85 @@ async function initializeDashboard() {
         showError('resultsBody', `Ошибка: ${error.message}`);
     }
 }
+
+// Добавьте эту функцию
+function showLoginPrompt() {
+    const tbody = document.getElementById('resultsBody');
+    const summaryCards = document.querySelector('.summary-cards');
+    const chartsSection = document.querySelector('.charts-section');
+    
+    // Скрываем данные
+    if (summaryCards) summaryCards.style.display = 'none';
+    if (chartsSection) chartsSection.style.display = 'none';
+    
+    // Показываем сообщение о необходимости авторизации
+    tbody.innerHTML = `
+        <tr>
+            <td colspan="8" style="text-align: center; padding: 40px; color: #666;">
+                <h3>🔐 Требуется авторизация</h3>
+                <p>Для просмотра данных необходимо войти в систему</p>
+                <button class="apply-btn" onclick="showAuthModal()" style="margin-top: 15px;">
+                    Войти в систему
+                </button>
+            </td>
+        </tr>
+    `;
+}
+
+function showLoginPrompt() {
+    const tbody = document.getElementById('resultsBody');
+    const summaryCards = document.querySelector('.summary-cards');
+    const chartsSection = document.querySelector('.charts-section');
+    
+    // Скрываем данные
+    if (summaryCards) summaryCards.style.display = 'none';
+    if (chartsSection) chartsSection.style.display = 'none';
+    
+    // Показываем сообщение о необходимости авторизации
+    tbody.innerHTML = `
+        <tr>
+            <td colspan="8" style="text-align: center; padding: 40px; color: #666;">
+                <h3>🔐 Требуется авторизация</h3>
+                <p>Для просмотра данных необходимо войти в систему</p>
+                <button class="apply-btn" onclick="showAuthModal()" style="margin-top: 15px;">
+                    Войти в систему
+                </button>
+            </td>
+        </tr>
+    `;
+}
+
+window.showAllowedEmails = async function() {
+    try {
+        if (!BitrixAPI.authToken) {
+            alert('❌ Для этой функции требуется авторизация');
+            showAuthModal();
+            return;
+        }
+        
+        const data = await BitrixAPI.getAllowedEmails();
+        let message = '📧 Список разрешенных email-адресов для регистрации:\n\n';
+        
+        if (data.allowed_emails && data.allowed_emails.length > 0) {
+            data.allowed_emails.forEach((email, index) => {
+                message += `${index + 1}. ${email}\n`;
+            });
+            message += `\nВсего: ${data.allowed_emails.length} email-адресов`;
+        } else {
+            message += 'Нет разрешенных email-адресов';
+        }
+        
+        alert(message);
+    } catch (error) {
+        console.error('Show emails error:', error);
+        if (error.message.includes('401') || error.message.includes('Authentication')) {
+            alert('❌ Ошибка авторизации. Пожалуйста, войдите снова.');
+            showAuthModal();
+        } else {
+            alert('❌ Ошибка: ' + error.message);
+        }
+    }
+};
 
 // Функции аутентификации
 function showAuthModal() {
@@ -250,6 +337,12 @@ async function loadUsersList() {
 
 async function applyFilters() {
     try {
+        // ПРОВЕРЯЕМ АВТОРИЗАЦИЮ
+        if (!BitrixAPI.authToken) {
+            showLoginPrompt();
+            return;
+        }
+        
         showLoading('resultsBody', 'Загрузка данных...');
 
         const period = document.getElementById('periodSelect').value;
@@ -284,10 +377,12 @@ async function applyFilters() {
 }
 
 function displayUserStats(statsData) {
-    if (!statsData || !statsData.user_stats) {
-        showError('resultsBody', 'Нет данных для отображения');
-        return;
-    }
+    // ПОКАЗЫВАЕМ СКРЫТЫЕ СЕКЦИИ
+    const summaryCards = document.querySelector('.summary-cards');
+    const chartsSection = document.querySelector('.charts-section');
+    
+    if (summaryCards) summaryCards.style.display = 'grid';
+    if (chartsSection) chartsSection.style.display = 'block';
 
     let totalCalls = 0;
     let totalComments = 0;
