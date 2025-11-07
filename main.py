@@ -22,7 +22,7 @@ load_dotenv()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://dev-cloud-ksa.ru"],  # Ваши домены
+    allow_origins=["https://dev-cloud-ksa.ru", "http://localhost:3000", "http://localhost:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -96,9 +96,9 @@ async def health_check():
         "version": "1.0"
     }
 
-# Защищенные эндпоинты (требуют аутентификации)
+# Основные эндпоинты БЕЗ аутентификации
 @app.get("/api/users-list")
-async def get_users_list(current_user: dict = Depends(get_current_user)):
+async def get_users_list():
     """Список сотрудников для фильтров"""
     try:
         users = await bitrix_service.get_presales_users()
@@ -133,8 +133,7 @@ async def get_detailed_stats(
     end_date: str = None,
     user_ids: str = None,
     activity_type: str = None,
-    include_statistics: bool = False,
-    current_user: dict = Depends(get_current_user)
+    include_statistics: bool = False
 ):
     """Получить детальную статистику с опциональной аналитикой"""
     try:
@@ -246,18 +245,8 @@ async def get_detailed_stats(
         logger.error(f"Error getting detailed stats: {str(e)}")
         return {"success": False, "error": str(e)}
 
-@app.post("/api/clear-cache")
-async def clear_cache(current_user: dict = Depends(get_current_user)):
-    """Очистить кэш"""
-    try:
-        bitrix_service.clear_cache()
-        return {"success": True, "message": "Cache cleared successfully"}
-    except Exception as e:
-        logger.error(f"Error clearing cache: {str(e)}")
-        return {"success": False, "error": str(e)}
-
 @app.get("/api/connection-test")
-async def test_connection(current_user: dict = Depends(get_current_user)):
+async def test_connection():
     """Тест подключения к Bitrix24"""
     try:
         is_connected = await bitrix_service.test_connection()
@@ -270,6 +259,17 @@ async def test_connection(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         logger.error(f"Connection test error: {str(e)}")
         return {"connected": False, "error": str(e)}
+
+# Защищенные эндпоинты (требуют аутентификации)
+@app.post("/api/clear-cache")
+async def clear_cache(current_user: dict = Depends(get_current_user)):
+    """Очистить кэш"""
+    try:
+        bitrix_service.clear_cache()
+        return {"success": True, "message": "Cache cleared successfully"}
+    except Exception as e:
+        logger.error(f"Error clearing cache: {str(e)}")
+        return {"success": False, "error": str(e)}
 
 @app.get("/api/debug/users")
 async def debug_users(current_user: dict = Depends(get_current_user)):
@@ -364,170 +364,6 @@ async def remove_allowed_email(request: EmailRequest, current_user: dict = Depen
     """Удалить email из белого списка"""
     auth_service.remove_allowed_email(request.email)
     return {"message": f"Email {request.email} удален из разрешенных"}
-
-# Публичные эндпоинты (без аутентификации)
-@app.get("/api/public/users-list")
-async def get_users_list_public():
-    """Список сотрудников для фильтров (публичный)"""
-    try:
-        users = await bitrix_service.get_presales_users()
-        
-        if users is None:
-            return {"users": []}
-        
-        formatted_users = []
-        for user in users:
-            formatted_users.append({
-                "ID": user['ID'],
-                "NAME": user.get('NAME', ''),
-                "LAST_NAME": user.get('LAST_NAME', ''),
-                "WORK_POSITION": user.get('WORK_POSITION', ''),
-                "EMAIL": user.get('EMAIL', '')
-            })
-        
-        return {
-            "users": formatted_users,
-            "total_presales_users": len(formatted_users),
-            "message": f"Найдено {len(formatted_users)} сотрудников пресейла"
-        }
-        
-    except Exception as e:
-        logger.error(f"Error in users-list: {str(e)}")
-        return {"users": [], "error": str(e)}
-
-@app.get("/api/public/stats/detailed")
-async def get_detailed_stats_public(
-    days: int = 30,
-    start_date: str = None,
-    end_date: str = None,
-    user_ids: str = None,
-    activity_type: str = None,
-    include_statistics: bool = False
-):
-    """Получить детальную статистику (публичный)"""
-    try:
-        user_ids_list = user_ids.split(',') if user_ids else []
-        activity_types = [activity_type] if activity_type else None
-        
-        logger.info(f"Fetching stats: days={days}, start_date={start_date}, end_date={end_date}, users={user_ids_list}, types={activity_types}")
-        
-        # Получаем активности
-        activities = await bitrix_service.get_activities(
-            days=days,
-            start_date=start_date,
-            end_date=end_date,
-            user_ids=user_ids_list,
-            activity_types=activity_types
-        )
-        
-        if not activities:
-            return {
-                "success": True,
-                "user_stats": [],
-                "total_activities": 0,
-                "active_users": 0,
-                "period_days": days if not start_date else None,
-                "date_range": {
-                    "start": start_date,
-                    "end": end_date
-                } if start_date and end_date else None
-            }
-        
-        # Обрабатываем статистику по пользователям
-        user_stats = []
-        user_activities = {}
-        
-        for activity in activities:
-            user_id = activity['AUTHOR_ID']
-            if user_id not in user_activities:
-                user_activities[user_id] = []
-            user_activities[user_id].append(activity)
-        
-        # Получаем информацию о пользователях
-        presales_users = await bitrix_service.get_presales_users()
-        user_info_map = {user['ID']: user for user in presales_users}
-        
-        for user_id, user_acts in user_activities.items():
-            user_info = user_info_map.get(user_id)
-            if not user_info:
-                continue
-                
-            # Считаем статистику по типам
-            calls = len([a for a in user_acts if a['TYPE_ID'] == '2'])
-            comments = len([a for a in user_acts if a['TYPE_ID'] == '6'])
-            tasks = len([a for a in user_acts if a['TYPE_ID'] == '4'])
-            meetings = len([a for a in user_acts if a['TYPE_ID'] == '1'])
-            total = len(user_acts)
-            
-            # Дни активности
-            activity_dates = set()
-            last_activity = None
-            
-            for act in user_acts:
-                act_date = datetime.fromisoformat(act['CREATED'].replace('Z', '+00:00'))
-                date_key = act_date.strftime('%Y-%m-%d')
-                activity_dates.add(date_key)
-                
-                if not last_activity or act_date > last_activity:
-                    last_activity = act_date
-            
-            user_stats.append({
-                "user_id": user_id,
-                "user_name": f"{user_info.get('NAME', '')} {user_info.get('LAST_NAME', '')}",
-                "calls": calls,
-                "comments": comments,
-                "tasks": tasks,
-                "meetings": meetings,
-                "total": total,
-                "days_count": len(activity_dates),
-                "last_activity_date": last_activity.strftime('%Y-%m-%d %H:%M') if last_activity else "Нет данных",
-                "activities": user_acts
-            })
-        
-        total_activities = len(activities)
-        
-        result = {
-            "success": True,
-            "user_stats": user_stats,
-            "total_activities": total_activities,
-            "active_users": len(user_stats),
-            "period_days": days if not start_date else None,
-            "date_range": {
-                "start": start_date,
-                "end": end_date
-            } if start_date and end_date else None
-        }
-        
-        # Добавляем статистику если запрошено
-        if include_statistics:
-            statistics = await bitrix_service.get_activity_statistics(
-                days=days,
-                start_date=start_date,
-                end_date=end_date,
-                user_ids=user_ids_list
-            )
-            result["statistics"] = statistics
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Error getting detailed stats: {str(e)}")
-        return {"success": False, "error": str(e)}
-
-@app.get("/api/public/connection-test")
-async def test_connection_public():
-    """Тест подключения к Bitrix24 (публичный)"""
-    try:
-        is_connected = await bitrix_service.test_connection()
-        
-        return {
-            "connected": is_connected,
-            "webhook_configured": bool(os.getenv("BITRIX_WEBHOOK_URL")),
-            "message": "Подключение успешно" if is_connected else "Требуется настройка подключения"
-        }
-    except Exception as e:
-        logger.error(f"Connection test error: {str(e)}")
-        return {"connected": False, "error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
