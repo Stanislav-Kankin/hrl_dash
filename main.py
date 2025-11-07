@@ -5,13 +5,10 @@ from datetime import datetime, timedelta
 from app.services.bitrix_service import BitrixService
 from dotenv import load_dotenv
 from pydantic import BaseModel
-
 from fastapi.security import HTTPBearer
-
 from app.schemas.auth import UserRegister, UserLogin, Token, UserResponse
 from app.services.auth_service import auth_service
 from app.dependencies import get_current_user
-
 import os
 import logging
 
@@ -92,7 +89,7 @@ async def health_check():
 
 # Защищенные эндпоинты (требуют аутентификации)
 @app.get("/api/users-list")
-async def get_users_list():  # current_user: dict = Depends(get_current_user)
+async def get_users_list(current_user: dict = Depends(get_current_user)):
     """Список сотрудников для фильтров"""
     try:
         users = await bitrix_service.get_presales_users()
@@ -128,7 +125,7 @@ async def get_detailed_stats(
     user_ids: str = None,
     activity_type: str = None,
     include_statistics: bool = False,
-    # current_user: dict = Depends(get_current_user)  # ВОССТАНОВЛЕНА авторизация
+    current_user: dict = Depends(get_current_user)
 ):
     """Получить детальную статистику с опциональной аналитикой"""
     try:
@@ -240,35 +237,8 @@ async def get_detailed_stats(
         logger.error(f"Error getting detailed stats: {str(e)}")
         return {"success": False, "error": str(e)}
 
-@app.get("/api/statistics")
-async def get_statistics(
-    days: int = None,
-    start_date: str = None,
-    end_date: str = None,
-    user_ids: str = None,
-    # current_user: dict = Depends(get_current_user)
-):
-    """Получить статистику активностей с группировкой"""
-    try:
-        user_ids_list = user_ids.split(',') if user_ids else []
-        
-        statistics = await bitrix_service.get_activity_statistics(
-            days=days,
-            start_date=start_date,
-            end_date=end_date,
-            user_ids=user_ids_list
-        )
-        
-        return {
-            "success": True,
-            "statistics": statistics
-        }
-    except Exception as e:
-        logger.error(f"Error getting statistics: {str(e)}")
-        return {"success": False, "error": str(e)}
-
 @app.post("/api/clear-cache")
-async def clear_cache(): # current_user: dict = Depends(get_current_user)
+async def clear_cache(current_user: dict = Depends(get_current_user)):
     """Очистить кэш"""
     try:
         bitrix_service.clear_cache()
@@ -278,7 +248,7 @@ async def clear_cache(): # current_user: dict = Depends(get_current_user)
         return {"success": False, "error": str(e)}
 
 @app.get("/api/connection-test")
-async def test_connection():  # current_user: dict = Depends(get_current_user)
+async def test_connection(current_user: dict = Depends(get_current_user)):
     """Тест подключения к Bitrix24"""
     try:
         is_connected = await bitrix_service.test_connection()
@@ -293,7 +263,7 @@ async def test_connection():  # current_user: dict = Depends(get_current_user)
         return {"connected": False, "error": str(e)}
 
 @app.get("/api/debug/users")
-async def debug_users(): # current_user: dict = Depends(get_current_user)
+async def debug_users(current_user: dict = Depends(get_current_user)):
     """Отладочный эндпоинт для проверки пользователей"""
     try:
         # Получаем всех пользователей
@@ -313,7 +283,7 @@ async def debug_users(): # current_user: dict = Depends(get_current_user)
                     "WORK_POSITION": user.get('WORK_POSITION', ''),
                     "EMAIL": user.get('EMAIL', ''),
                     "ACTIVE": user.get('ACTIVE', '')
-                } for user in (all_users or [])[:10]  # Ограничиваем для отладки
+                } for user in (all_users or [])[:10]
             ],
             "presales_users": [
                 {
@@ -331,7 +301,7 @@ async def debug_users(): # current_user: dict = Depends(get_current_user)
         return {"error": str(e)}
 
 @app.get("/api/find-users")
-async def find_users(): # current_user: dict = Depends(get_current_user)
+async def find_users(current_user: dict = Depends(get_current_user)):
     """Найти пользователей по имени"""
     try:
         all_users = await bitrix_service.get_users(only_active=True)
@@ -339,7 +309,6 @@ async def find_users(): # current_user: dict = Depends(get_current_user)
         if not all_users:
             return {"error": "No users found"}
         
-        # Ищем нужных сотрудников
         target_names = [
             "Безина Ольга", "Фатюхина Полина", "Агапова Анастасия",
             "Некрасова Елена", "Вахрушева Наталия", "Прокофьева Дарья"
@@ -356,7 +325,7 @@ async def find_users(): # current_user: dict = Depends(get_current_user)
                         "LAST_NAME": user.get('LAST_NAME', ''),
                         "WORK_POSITION": user.get('WORK_POSITION', ''),
                         "FULL_NAME": full_name
-                    });
+                    })
                     break
         
         return {
@@ -371,18 +340,18 @@ async def find_users(): # current_user: dict = Depends(get_current_user)
 
 # Админ эндпоинты для управления белым списком
 @app.get("/api/admin/allowed-emails")
-async def get_allowed_emails():  # current_user: dict = Depends(get_current_user)
-    """Получить список разрешенных email (только для просмотра)"""
+async def get_allowed_emails(current_user: dict = Depends(get_current_user)):
+    """Получить список разрешенных email"""
     return {"allowed_emails": auth_service.get_allowed_emails()}
 
 @app.post("/api/admin/add-allowed-email")
-async def add_allowed_email(request: EmailRequest): # current_user: dict = Depends(get_current_user)
+async def add_allowed_email(request: EmailRequest, current_user: dict = Depends(get_current_user)):
     """Добавить email в белый список"""
     auth_service.add_allowed_email(request.email)
     return {"message": f"Email {request.email} добавлен в разрешенные"}
 
 @app.post("/api/admin/remove-allowed-email")
-async def remove_allowed_email(request: EmailRequest):# current_user: dict = Depends(get_current_user)
+async def remove_allowed_email(request: EmailRequest, current_user: dict = Depends(get_current_user)):
     """Удалить email из белого списка"""
     auth_service.remove_allowed_email(request.email)
     return {"message": f"Email {request.email} удален из разрешенных"}
