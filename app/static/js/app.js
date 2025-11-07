@@ -14,8 +14,8 @@ let currentUser = null;
 document.addEventListener('DOMContentLoaded', function () {
     console.log('🚀 DOM loaded, initializing...');
     initializeEventListeners();
-    initAuth(); // Сначала авторизация
-    initializeDashboard(); // Потом дашборд
+    initAuth();
+    initializeDashboard();
 });
 
 function initializeEventListeners() {
@@ -55,28 +55,12 @@ function initAuth() {
     const token = BitrixAPI.authToken;
     console.log('🔐 Auth init, token exists:', !!token);
     
-    const authButton = document.getElementById('authButton');
-    
     if (!token) {
-        console.log('🔐 No auth token - forcing login form');
-        if (authButton) {
-            authButton.textContent = '🔐 Вход для админа';
-            authButton.onclick = showAuthModal;
-        }
-        // Показываем модальное окно сразу с небольшой задержкой
-        setTimeout(() => {
-            showAuthModal();
-        }, 1000);
+        console.log('🔐 No auth token - showing login form');
+        // Показываем сразу без задержки
+        showAuthModal();
     } else {
-        console.log('🔐 Token found, checking validity...');
-        // Если есть токен, проверяем его валидность
-        checkAuthStatus().catch(error => {
-            console.error('🔐 Auth check failed:', error);
-            // Если проверка не удалась, показываем форму входа
-            setTimeout(() => {
-                showAuthModal();
-            }, 500);
-        });
+        checkAuthStatus();
     }
 }
 
@@ -134,10 +118,13 @@ async function initializeDashboard() {
 
 // Функции аутентификации
 function showAuthModal() {
+    console.log('🔄 Showing auth modal');
     const modal = document.getElementById('authModal');
     if (modal) {
         modal.style.display = 'block';
         showLogin();
+    } else {
+        console.error('❌ Auth modal not found!');
     }
 }
 
@@ -178,7 +165,7 @@ async function login(event) {
 
         if (data.access_token) {
             BitrixAPI.setAuthToken(data.access_token);
-            console.log('✅ Token set:', data.access_token);
+            console.log('✅ Token set');
             hideAuthModal();
             await checkAuthStatus();
         } else {
@@ -240,7 +227,6 @@ function logout() {
         authButton.onclick = showAuthModal;
     }
 
-    // Не перезагружаем страницу, просто обновляем UI
     alert('✅ Вы вышли из системы');
 }
 
@@ -303,7 +289,6 @@ function displayUserStats(statsData) {
         return;
     }
 
-    // Добавьте подсчет общих цифр:
     let totalCalls = 0;
     let totalComments = 0;
     let totalTasks = 0;
@@ -332,11 +317,9 @@ function displayUserStats(statsData) {
 
     tbody.innerHTML = '';
     
-    // ВАЖНО: Очищаем предыдущие данные
     currentUserStats = {};
     
     statsData.user_stats.forEach(user => {
-        // СОХРАНЯЕМ ДАННЫЕ ДЛЯ ДЕТАЛИЗАЦИИ
         currentUserStats[user.user_id] = user;
         
         const row = document.createElement('tr');
@@ -383,7 +366,7 @@ function showError(elementId, message) {
     }
 }
 
-// Функция детализации (ДОБАВЬТЕ ЭТУ ФУНКЦИЮ!)
+// Функция детализации
 window.showUserDetails = function(userId) {
     console.log('🔍 Showing details for user:', userId);
     
@@ -400,9 +383,6 @@ window.showUserDetails = function(userId) {
         return;
     }
     
-    console.log('📋 User activities:', userStats.activities);
-    
-    // Группируем активности по дням
     const activitiesByDay = {};
     if (userStats.activities && userStats.activities.length > 0) {
         userStats.activities.forEach(activity => {
@@ -427,7 +407,6 @@ window.showUserDetails = function(userId) {
         });
     }
     
-    // Сортируем дни по убыванию
     const sortedDays = Object.keys(activitiesByDay).sort().reverse();
     
     let html = `
@@ -484,6 +463,7 @@ window.register = register;
 window.showLogin = showLogin;
 window.showRegister = showRegister;
 window.logout = logout;
+window.showAuthModal = showAuthModal;
 
 window.testConnection = async function () {
     try {
