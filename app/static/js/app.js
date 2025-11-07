@@ -543,3 +543,11 @@ window.showUserDetails = function(userId) {
 
     panel.classList.add('active');
 };
+
+// ПРИНУДИТЕЛЬНЫЙ ПОКАЗ ФОРМЫ ПРИ ЗАГРУЗКЕ
+setTimeout(() => {
+    const modal = document.getElementById('authModal');
+    if (modal) {
+        modal.style.display = 'block';
+    }
+}, 500);
