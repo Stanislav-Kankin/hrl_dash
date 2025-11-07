@@ -11,6 +11,7 @@ class BitrixService:
     def __init__(self):
         self.webhook_url = os.getenv("BITRIX_WEBHOOK_URL")
         self.session = None
+        self.bitrix_session = None  # ← ОТДЕЛЬНАЯ СЕССИЯ ДЛЯ BITRIX БЕЗ JWT
         self._cache = {}
         self._cache_ttl = 300  # 5 минут кэширования
 
@@ -20,23 +21,33 @@ class BitrixService:
             timeout = aiohttp.ClientTimeout(total=30)
             self.session = aiohttp.ClientSession(timeout=timeout)
 
+    async def ensure_bitrix_session(self):
+        """Создает сессию для Bitrix без JWT заголовков"""
+        if self.bitrix_session is None or self.bitrix_session.closed:
+            timeout = aiohttp.ClientTimeout(total=30)
+            self.bitrix_session = aiohttp.ClientSession(timeout=timeout)
+
     async def close_session(self):
-        """Закрывает сессию"""
+        """Закрывает обе сессии"""
         if self.session and not self.session.closed:
             await self.session.close()
             self.session = None
+        if self.bitrix_session and not self.bitrix_session.closed:
+            await self.bitrix_session.close()
+            self.bitrix_session = None
 
     async def make_bitrix_request(self, method: str, params: Dict = None) -> Optional[Dict]:
-        """Выполняет запрос к Bitrix24 API"""
+        """Выполняет запрос к Bitrix24 API БЕЗ JWT"""
         if not self.webhook_url:
             logger.error("BITRIX_WEBHOOK_URL не настроен")
             return None
 
-        await self.ensure_session()
+        await self.ensure_bitrix_session()  # ← Используем отдельную сессию для Bitrix
         
         url = f"{self.webhook_url}/{method}"
         try:
-            async with self.session.get(url, params=params) as response:
+            # ВАЖНО: не добавляем никакие заголовки авторизации!
+            async with self.bitrix_session.get(url, params=params) as response:
                 if response.status == 200:
                     data = await response.json()
                     if 'result' in data:
