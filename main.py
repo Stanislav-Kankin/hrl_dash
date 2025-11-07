@@ -19,6 +19,10 @@ load_dotenv()
 # Инициализируем сервис
 bitrix_service = BitrixService()
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+static_dir = os.path.join(current_dir, "app", "static")
+
+
 # Монтируем статические файлы из папки app/static
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
