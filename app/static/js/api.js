@@ -12,19 +12,27 @@ class BitrixAPI {
         localStorage.removeItem('auth_token');
     }
 
-    static async makeAuthenticatedRequest(url, options = {}) {
-        const token = this.authToken;
-        if (!token) {
+    static async makeRequest(url, options = {}) {
+        // Для публичных эндпоинтов не требуем авторизации
+        const isPublicEndpoint = url.includes('/api/users-list') || 
+                               url.includes('/api/stats/detailed') || 
+                               url.includes('/api/connection-test');
+        
+        if (!isPublicEndpoint && !this.authToken) {
             throw new Error('Authentication required');
         }
 
         const defaultOptions = {
             headers: {
-                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json',
                 ...options.headers
             }
         };
+
+        // Добавляем авторизацию только если есть токен
+        if (this.authToken) {
+            defaultOptions.headers['Authorization'] = `Bearer ${this.authToken}`;
+        }
 
         const response = await fetch(url, { ...defaultOptions, ...options });
         
@@ -34,53 +42,38 @@ class BitrixAPI {
         }
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const errorText = await response.text();
+            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
         }
 
         return response;
     }
 
+    // Аутентификация
     static async getCurrentUser() {
-        const response = await this.makeAuthenticatedRequest('/api/auth/me');
+        const response = await this.makeRequest('/api/auth/me');
         return await response.json();
     }
 
     static async login(email, password) {
-        const response = await fetch('/api/auth/login', {
+        const response = await this.makeRequest('/api/auth/login', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
             body: JSON.stringify({ email, password })
         });
-        
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Login failed');
-        }
-        
         return await response.json();
     }
 
     static async register(email, password, full_name = '') {
-        const response = await fetch('/api/auth/register', {
+        const response = await this.makeRequest('/api/auth/register', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
             body: JSON.stringify({ email, password, full_name })
         });
-        
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Registration failed');
-        }
-        
         return await response.json();
     }
 
+    // Публичные эндпоинты (не требуют авторизации)
     static async getUsersList() {
-        const response = await this.makeAuthenticatedRequest('/api/users-list');
+        const response = await fetch('/api/users-list');
         return await response.json();
     }
 
@@ -98,39 +91,40 @@ class BitrixAPI {
         }
         params.append('include_statistics', 'true');
 
-        const response = await this.makeAuthenticatedRequest(`/api/stats/detailed?${params}`);
+        const response = await fetch(`/api/stats/detailed?${params}`);
         return await response.json();
     }
 
     static async testConnection() {
-        const response = await this.makeAuthenticatedRequest('/api/connection-test');
+        const response = await fetch('/api/connection-test');
         return await response.json();
     }
 
+    // Защищенные эндпоинты (требуют авторизации)
     static async clearCache() {
-        const response = await this.makeAuthenticatedRequest('/api/clear-cache', {
+        const response = await this.makeRequest('/api/clear-cache', {
             method: 'POST'
         });
         return await response.json();
     }
 
     static async debugUsers() {
-        const response = await this.makeAuthenticatedRequest('/api/debug/users');
+        const response = await this.makeRequest('/api/debug/users');
         return await response.json();
     }
 
     static async findUsers() {
-        const response = await this.makeAuthenticatedRequest('/api/find-users');
+        const response = await this.makeRequest('/api/find-users');
         return await response.json();
     }
 
     static async getAllowedEmails() {
-        const response = await this.makeAuthenticatedRequest('/api/admin/allowed-emails');
+        const response = await this.makeRequest('/api/admin/allowed-emails');
         return await response.json();
     }
 
     static async addAllowedEmail(email) {
-        const response = await this.makeAuthenticatedRequest('/api/admin/add-allowed-email', {
+        const response = await this.makeRequest('/api/admin/add-allowed-email', {
             method: 'POST',
             body: JSON.stringify({ email })
         });
@@ -138,24 +132,10 @@ class BitrixAPI {
     }
 
     static async removeAllowedEmail(email) {
-        const response = await this.makeAuthenticatedRequest('/api/admin/remove-allowed-email', {
+        const response = await this.makeRequest('/api/admin/remove-allowed-email', {
             method: 'POST',
             body: JSON.stringify({ email })
         });
         return await response.json();
     }
 }
-
-const API_BASE = 'https://dev-cloud-ksa.ru/api';
-const getAuthHeaders = () => {
-    const token = localStorage.getItem('auth_token');
-    return {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-    };
-};
-
-// Используйте в запросах:
-fetch(`${API_BASE}/users-list`, {
-    headers: getAuthHeaders()
-})

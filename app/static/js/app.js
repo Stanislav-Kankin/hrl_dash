@@ -9,13 +9,13 @@ const ACTIVITY_TYPES = {
 let allUsers = [];
 let currentUserStats = {};
 let currentUser = null;
-let authChecked = false;
 
 // Инициализация при загрузке
 document.addEventListener('DOMContentLoaded', async function () {
     console.log('🚀 Dashboard loading...');
     initializeEventListeners();
-    await checkAuthAndInitialize();
+    await initializeDashboard();
+    checkAuthStatus();
 });
 
 function initializeEventListeners() {
@@ -51,22 +51,12 @@ function initializeEventListeners() {
     });
 }
 
-async function checkAuthAndInitialize() {
-    console.log('🔐 Forcing auth modal...');
-    
-    // ПРИНУДИТЕЛЬНО ПОКАЗЫВАЕМ ФОРМУ АВТОРИЗАЦИИ
-    showAuthModal();
-    return;
-
-    // Весь остальной код ниже - закомментирован
-    /*
+async function checkAuthStatus() {
     const token = BitrixAPI.authToken;
     console.log('🔐 Checking auth, token exists:', !!token);
     
     if (!token) {
-        console.log('❌ No token found, showing auth modal');
-        showAuthModal();
-        authChecked = true;
+        console.log('❌ No token found');
         return;
     }
 
@@ -78,15 +68,10 @@ async function checkAuthAndInitialize() {
         currentUser = userData;
         console.log('✅ User authenticated:', currentUser);
         updateUIForAuth();
-        await initializeDashboard();
-        authChecked = true;
     } catch (error) {
         console.error('🔐 Auth check failed:', error);
         BitrixAPI.clearAuthToken();
-        showAuthModal();
-        authChecked = true;
     }
-    */
 }
 
 async function initializeDashboard() {
@@ -147,10 +132,9 @@ async function login(event) {
         
         if (data.access_token) {
             BitrixAPI.setAuthToken(data.access_token);
-            console.log('✅ Token set, reinitializing...');
+            console.log('✅ Token set');
             hideAuthModal();
-            authChecked = false;
-            await checkAuthAndInitialize();
+            await checkAuthStatus();
         }
     } catch (error) {
         console.error('❌ Login error:', error);
@@ -231,7 +215,6 @@ function updateUIForAuth() {
 function logout() {
     BitrixAPI.clearAuthToken();
     currentUser = null;
-    authChecked = false;
     location.reload();
 }
 
@@ -376,6 +359,10 @@ window.testConnection = async function() {
 
 window.clearCache = async function() {
     try {
+        if (!BitrixAPI.authToken) {
+            showAuthModal();
+            return;
+        }
         const result = await BitrixAPI.clearCache();
         if (result.success) {
             alert('✅ Кэш очищен!');
@@ -388,6 +375,10 @@ window.clearCache = async function() {
 
 window.debugUsers = async function() {
     try {
+        if (!BitrixAPI.authToken) {
+            showAuthModal();
+            return;
+        }
         const data = await BitrixAPI.debugUsers();
         let message = `Всего пользователей: ${data.total_users}\n`;
         message += `Пресейл пользователей: ${data.total_presales_users}\n\n`;
@@ -407,6 +398,10 @@ window.debugUsers = async function() {
 
 window.findUsers = async function() {
     try {
+        if (!BitrixAPI.authToken) {
+            showAuthModal();
+            return;
+        }
         const data = await BitrixAPI.findUsers();
         let message = `Найдено ${data.found_users.length} из ${data.target_names.length} сотрудников\n\n`;
 
@@ -427,6 +422,10 @@ window.findUsers = async function() {
 
 window.showAdminPanel = async function() {
     try {
+        if (!BitrixAPI.authToken) {
+            showAuthModal();
+            return;
+        }
         const data = await BitrixAPI.getAllowedEmails();
         let message = '📧 Разрешенные email-адреса:\n\n';
         data.allowed_emails.forEach(email => {
@@ -444,6 +443,10 @@ window.showAdminPanel = async function() {
 };
 
 window.addAllowedEmail = async function() {
+    if (!BitrixAPI.authToken) {
+        showAuthModal();
+        return;
+    }
     const email = prompt('Введите email для добавления в белый список:');
     if (email) {
         try {
@@ -456,6 +459,10 @@ window.addAllowedEmail = async function() {
 };
 
 window.removeAllowedEmail = async function() {
+    if (!BitrixAPI.authToken) {
+        showAuthModal();
+        return;
+    }
     const email = prompt('Введите email для удаления из белого списка:');
     if (email) {
         try {
@@ -543,11 +550,3 @@ window.showUserDetails = function(userId) {
 
     panel.classList.add('active');
 };
-
-// ПРИНУДИТЕЛЬНЫЙ ПОКАЗ ФОРМЫ ПРИ ЗАГРУЗКЕ
-setTimeout(() => {
-    const modal = document.getElementById('authModal');
-    if (modal) {
-        modal.style.display = 'block';
-    }
-}, 500);
