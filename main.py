@@ -97,14 +97,14 @@ async def read_root():
 async def health_check():
     """Проверка здоровья API"""
     return {
-        "status": "ok",
+        "status": "ok", 
         "timestamp": datetime.now().isoformat(),
         "version": "1.0"
     }
 
 # Защищенные эндпоинты (требуют аутентификации)
 @app.get("/api/users-list")
-async def get_users_list():#current_user: dict = Depends(get_current_user)
+async def get_users_list(urrent_user: dict = Depends(get_current_user)):#current_user: dict = Depends(get_current_user)
     """Список сотрудников для фильтров"""
     try:
         users = await bitrix_service.get_presales_users()
