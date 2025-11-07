@@ -92,7 +92,7 @@ async def health_check():
 
 # Защищенные эндпоинты (требуют аутентификации)
 @app.get("/api/users-list")
-async def get_users_list(current_user: dict = Depends(get_current_user)):  # ИСПРАВЛЕНО: было 'urrent_user'
+async def get_users_list():  # current_user: dict = Depends(get_current_user)
     """Список сотрудников для фильтров"""
     try:
         users = await bitrix_service.get_presales_users()
@@ -128,7 +128,7 @@ async def get_detailed_stats(
     user_ids: str = None,
     activity_type: str = None,
     include_statistics: bool = False,
-    current_user: dict = Depends(get_current_user)  # ВОССТАНОВЛЕНА авторизация
+    # current_user: dict = Depends(get_current_user)  # ВОССТАНОВЛЕНА авторизация
 ):
     """Получить детальную статистику с опциональной аналитикой"""
     try:

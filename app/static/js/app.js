@@ -50,32 +50,12 @@ function initializeEventListeners() {
 }
 
 async function checkAuthAndInitialize() {
-    const token = BitrixAPI.authToken;
-    console.log('🔐 Token exists:', !!token);
+    // Пропускаем авторизацию - сразу грузим дашборд
+    console.log('Skipping auth, loading dashboard directly');
+    await initializeDashboard();
     
-    if (!token) {
-        console.log('❌ No token, showing auth modal');
-        showAuthModal();
-        return;
-    }
-
-    try {
-        console.log('🔐 Getting current user...');
-        const userData = await BitrixAPI.getCurrentUser();
-        
-        if (userData.error) {
-            throw new Error(userData.error);
-        }
-        
-        currentUser = userData;
-        console.log('✅ User authenticated:', currentUser);
-        updateUIForAuth();
-        await initializeDashboard();
-    } catch (error) {
-        console.error('🔐 Auth failed:', error);
-        BitrixAPI.clearAuthToken();
-        showAuthModal();
-    }
+    // Скрываем модалку авторизации
+    hideAuthModal();
 }
 
 async function initializeDashboard() {
