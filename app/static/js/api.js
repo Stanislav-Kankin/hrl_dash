@@ -16,19 +16,31 @@ class BitrixAPI {
         try {
             console.log('🔐 Making request to:', url);
             
-            const defaultOptions = {
+            // Создаем чистый объект headers
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+
+            // Добавляем авторизацию если есть валидный токен
+            const token = this.authToken;
+            if (token && token.length > 50 && !token.includes('…')) { // Проверяем что токен валидный
+                headers['Authorization'] = `Bearer ${token}`;
+                console.log('🔐 Added Authorization header');
+            }
+
+            const requestOptions = {
+                ...options,
                 headers: {
-                    'Content-Type': 'application/json',
+                    ...headers,
                     ...options.headers
                 }
             };
 
-            // ВСЕГДА добавляем авторизацию если есть токен
-            if (this.authToken) {
-                defaultOptions.headers['Authorization'] = `Bearer ${this.authToken}`;
-            }
-
-            const response = await fetch(url, { ...defaultOptions, ...options });
+            console.log('🔐 Request options:', requestOptions);
+            
+            const response = await fetch(url, requestOptions);
+            
+            console.log('🔐 Response status:', response.status);
             
             if (response.status === 401) {
                 this.clearAuthToken();
