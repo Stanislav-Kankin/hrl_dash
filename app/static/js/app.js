@@ -11,11 +11,11 @@ let currentUserStats = {};
 let currentUser = null;
 
 // Инициализация при загрузке
-document.addEventListener('DOMContentLoaded', async function () {
-    console.log('🚀 Dashboard loading...');
+document.addEventListener('DOMContentLoaded', function () {
+    console.log('🚀 DOM loaded, initializing...');
     initializeEventListeners();
-    await initializeDashboard();
-    await checkAuthStatus(); // Добавьте await здесь
+    initAuth(); // Сначала авторизация
+    initializeDashboard(); // Потом дашборд
 });
 
 function initializeEventListeners() {
@@ -49,6 +49,35 @@ function initializeEventListeners() {
             hideAuthModal();
         }
     });
+}
+
+function initAuth() {
+    const token = BitrixAPI.authToken;
+    console.log('🔐 Auth init, token exists:', !!token);
+    
+    const authButton = document.getElementById('authButton');
+    
+    if (!token) {
+        console.log('🔐 No auth token - forcing login form');
+        if (authButton) {
+            authButton.textContent = '🔐 Вход для админа';
+            authButton.onclick = showAuthModal;
+        }
+        // Показываем модальное окно сразу с небольшой задержкой
+        setTimeout(() => {
+            showAuthModal();
+        }, 1000);
+    } else {
+        console.log('🔐 Token found, checking validity...');
+        // Если есть токен, проверяем его валидность
+        checkAuthStatus().catch(error => {
+            console.error('🔐 Auth check failed:', error);
+            // Если проверка не удалась, показываем форму входа
+            setTimeout(() => {
+                showAuthModal();
+            }, 500);
+        });
+    }
 }
 
 async function checkAuthStatus() {
@@ -135,6 +164,8 @@ async function login(event) {
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
 
+    console.log('🔐 Login attempt:', { email, password });
+
     if (!email || !password) {
         alert('❌ Пожалуйста, заполните все поля');
         return false;
@@ -147,9 +178,12 @@ async function login(event) {
 
         if (data.access_token) {
             BitrixAPI.setAuthToken(data.access_token);
-            console.log('✅ Token set');
+            console.log('✅ Token set:', data.access_token);
             hideAuthModal();
             await checkAuthStatus();
+        } else {
+            console.error('❌ No token in response');
+            alert('Ошибка: токен не получен');
         }
     } catch (error) {
         console.error('❌ Login error:', error);
@@ -322,86 +356,6 @@ function displayUserStats(statsData) {
     console.log('✅ User stats saved for details:', Object.keys(currentUserStats));
 }
 
-window.showUserDetails = function(userId) {
-    console.log('🔍 Showing details for user:', userId);
-    
-    const userStats = currentUserStats[userId];
-    if (!userStats) {
-        alert('❌ Данные пользователя не найдены');
-        return;
-    }
-    
-    const panel = document.getElementById('detailsPanel');
-    if (!panel) {
-        console.error('❌ Details panel not found');
-        return;
-    }
-    
-    // Группируем активности по дням
-    const activitiesByDay = {};
-    userStats.activities.forEach(activity => {
-        const activityDate = new Date(activity.CREATED.replace('Z', '+00:00'));
-        const dateKey = activityDate.toISOString().split('T')[0];
-        
-        if (!activitiesByDay[dateKey]) {
-            activitiesByDay[dateKey] = [];
-        }
-        
-        activitiesByDay[dateKey].push({
-            time: activityDate.toLocaleTimeString('ru-RU'),
-            type: ACTIVITY_TYPES[activity.TYPE_ID]?.name || 'Другое',
-            type_class: ACTIVITY_TYPES[activity.TYPE_ID]?.class || 'badge-task',
-            description: activity.DESCRIPTION || activity.SUBJECT || 'Без описания',
-            type_id: activity.TYPE_ID
-        });
-    });
-    
-    // Сортируем дни по убыванию
-    const sortedDays = Object.keys(activitiesByDay).sort().reverse();
-    
-    let html = `
-        <div class="details-header">
-            <h3>📋 Детализация активностей: ${userStats.user_name}</h3>
-            <button class="quick-btn" onclick="document.getElementById('detailsPanel').classList.remove('active')">✕ Закрыть</button>
-        </div>
-        <div class="details-content">
-    `;
-    
-    sortedDays.forEach(day => {
-        const activities = activitiesByDay[day];
-        const date = new Date(day);
-        const dayName = date.toLocaleDateString('ru-RU', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-        });
-        
-        html += `
-            <div class="day-group">
-                <div class="day-header">📅 ${dayName} (${activities.length} активностей)</div>
-        `;
-        
-        activities.forEach(activity => {
-            html += `
-                <div class="activity-item">
-                    <span class="activity-time">${activity.time}</span>
-                    <span class="activity-type ${activity.type_class}">${activity.type}</span>
-                    <span class="activity-description">${activity.description}</span>
-                </div>
-            `;
-        });
-        
-        html += `</div>`;
-    });
-    
-    html += `</div>`;
-    panel.innerHTML = html;
-    panel.classList.add('active');
-    
-    console.log('✅ Details panel updated for user:', userId);
-};
-
 function updateUserSelect() {
     const select = document.getElementById('employeesSelect');
     select.innerHTML = '<option value="all">Все сотрудники</option>';
@@ -428,6 +382,100 @@ function showError(elementId, message) {
         element.innerHTML = `<tr><td colspan="8" style="color: red; text-align: center; padding: 20px;">${message}</td></tr>`;
     }
 }
+
+// Функция детализации (ДОБАВЬТЕ ЭТУ ФУНКЦИЮ!)
+window.showUserDetails = function(userId) {
+    console.log('🔍 Showing details for user:', userId);
+    
+    const userStats = currentUserStats[userId];
+    if (!userStats) {
+        alert('❌ Данные пользователя не найдены');
+        console.error('User stats not found for ID:', userId, 'Available:', Object.keys(currentUserStats));
+        return;
+    }
+    
+    const panel = document.getElementById('detailsPanel');
+    if (!panel) {
+        console.error('❌ Details panel not found');
+        return;
+    }
+    
+    console.log('📋 User activities:', userStats.activities);
+    
+    // Группируем активности по дням
+    const activitiesByDay = {};
+    if (userStats.activities && userStats.activities.length > 0) {
+        userStats.activities.forEach(activity => {
+            try {
+                const activityDate = new Date(activity.CREATED.replace('Z', '+00:00'));
+                const dateKey = activityDate.toISOString().split('T')[0];
+                
+                if (!activitiesByDay[dateKey]) {
+                    activitiesByDay[dateKey] = [];
+                }
+                
+                activitiesByDay[dateKey].push({
+                    time: activityDate.toLocaleTimeString('ru-RU'),
+                    type: ACTIVITY_TYPES[activity.TYPE_ID]?.name || 'Другое',
+                    type_class: ACTIVITY_TYPES[activity.TYPE_ID]?.class || 'badge-task',
+                    description: activity.DESCRIPTION || activity.SUBJECT || 'Без описания',
+                    type_id: activity.TYPE_ID
+                });
+            } catch (e) {
+                console.error('Error processing activity:', activity, e);
+            }
+        });
+    }
+    
+    // Сортируем дни по убыванию
+    const sortedDays = Object.keys(activitiesByDay).sort().reverse();
+    
+    let html = `
+        <div class="details-header">
+            <h3>📋 Детализация активностей: ${userStats.user_name}</h3>
+            <button class="quick-btn" onclick="document.getElementById('detailsPanel').classList.remove('active')">✕ Закрыть</button>
+        </div>
+        <div class="details-content">
+    `;
+    
+    if (sortedDays.length === 0) {
+        html += `<div class="loading">Нет данных об активностях</div>`;
+    } else {
+        sortedDays.forEach(day => {
+            const activities = activitiesByDay[day];
+            const date = new Date(day);
+            const dayName = date.toLocaleDateString('ru-RU', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+            
+            html += `
+                <div class="day-group">
+                    <div class="day-header">📅 ${dayName} (${activities.length} активностей)</div>
+            `;
+            
+            activities.forEach(activity => {
+                html += `
+                    <div class="activity-item">
+                        <span class="activity-time">${activity.time}</span>
+                        <span class="activity-type ${activity.type_class}">${activity.type}</span>
+                        <span class="activity-description">${activity.description}</span>
+                    </div>
+                `;
+            });
+            
+            html += `</div>`;
+        });
+    }
+    
+    html += `</div>`;
+    panel.innerHTML = html;
+    panel.classList.add('active');
+    
+    console.log('✅ Details panel updated for user:', userId);
+};
 
 // Глобальные функции
 window.applyFilters = applyFilters;
@@ -596,134 +644,3 @@ window.addAllowedEmail = async function () {
         }
     }
 };
-
-// В app.js ЗАМЕНИТЕ функцию initAuth():
-function initAuth() {
-    const token = BitrixAPI.authToken;
-    console.log('🔐 Auth init, token exists:', !!token);
-    
-    const authButton = document.getElementById('authButton');
-    
-    if (!token) {
-        console.log('🔐 No auth token - forcing login form');
-        if (authButton) {
-            authButton.textContent = '🔐 Вход для админа';
-            authButton.onclick = showAuthModal;
-        }
-        // Показываем модальное окно сразу с небольшой задержкой
-        setTimeout(() => {
-            showAuthModal();
-        }, 1000);
-    } else {
-        console.log('🔐 Token found, checking validity...');
-        // Если есть токен, проверяем его валидность
-        checkAuthStatus().catch(error => {
-            console.error('🔐 Auth check failed:', error);
-            // Если проверка не удалась, показываем форму входа
-            setTimeout(() => {
-                showAuthModal();
-            }, 500);
-        });
-    }
-}
-
-window.showUserDetails = function(userId) {
-    console.log('🔍 Showing details for user:', userId);
-    
-    const userStats = currentUserStats[userId];
-    if (!userStats) {
-        alert('❌ Данные пользователя не найдены');
-        console.error('User stats not found for ID:', userId, 'Available:', Object.keys(currentUserStats));
-        return;
-    }
-    
-    const panel = document.getElementById('detailsPanel');
-    if (!panel) {
-        console.error('❌ Details panel not found');
-        return;
-    }
-    
-    console.log('📋 User activities:', userStats.activities);
-    
-    // Группируем активности по дням
-    const activitiesByDay = {};
-    if (userStats.activities && userStats.activities.length > 0) {
-        userStats.activities.forEach(activity => {
-            try {
-                const activityDate = new Date(activity.CREATED.replace('Z', '+00:00'));
-                const dateKey = activityDate.toISOString().split('T')[0];
-                
-                if (!activitiesByDay[dateKey]) {
-                    activitiesByDay[dateKey] = [];
-                }
-                
-                activitiesByDay[dateKey].push({
-                    time: activityDate.toLocaleTimeString('ru-RU'),
-                    type: ACTIVITY_TYPES[activity.TYPE_ID]?.name || 'Другое',
-                    type_class: ACTIVITY_TYPES[activity.TYPE_ID]?.class || 'badge-task',
-                    description: activity.DESCRIPTION || activity.SUBJECT || 'Без описания',
-                    type_id: activity.TYPE_ID
-                });
-            } catch (e) {
-                console.error('Error processing activity:', activity, e);
-            }
-        });
-    }
-    
-    // Сортируем дни по убыванию
-    const sortedDays = Object.keys(activitiesByDay).sort().reverse();
-    
-    let html = `
-        <div class="details-header">
-            <h3>📋 Детализация активностей: ${userStats.user_name}</h3>
-            <button class="quick-btn" onclick="document.getElementById('detailsPanel').classList.remove('active')">✕ Закрыть</button>
-        </div>
-        <div class="details-content">
-    `;
-    
-    if (sortedDays.length === 0) {
-        html += `<div class="loading">Нет данных об активностях</div>`;
-    } else {
-        sortedDays.forEach(day => {
-            const activities = activitiesByDay[day];
-            const date = new Date(day);
-            const dayName = date.toLocaleDateString('ru-RU', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            });
-            
-            html += `
-                <div class="day-group">
-                    <div class="day-header">📅 ${dayName} (${activities.length} активностей)</div>
-            `;
-            
-            activities.forEach(activity => {
-                html += `
-                    <div class="activity-item">
-                        <span class="activity-time">${activity.time}</span>
-                        <span class="activity-type ${activity.type_class}">${activity.type}</span>
-                        <span class="activity-description">${activity.description}</span>
-                    </div>
-                `;
-            });
-            
-            html += `</div>`;
-        });
-    }
-    
-    html += `</div>`;
-    panel.innerHTML = html;
-    panel.classList.add('active');
-    
-    console.log('✅ Details panel updated for user:', userId);
-};
-
-// И ВЫЗЫВАЙТЕ в DOMContentLoaded:
-document.addEventListener('DOMContentLoaded', function () {
-    console.log('🚀 DOM loaded, initializing...');
-    initializeEventListeners();
-    initAuth(); // Сначала авторизация
-    initializeDashboard(); // Потом дашборд
-});

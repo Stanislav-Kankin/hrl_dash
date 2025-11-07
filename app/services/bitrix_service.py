@@ -81,7 +81,8 @@ class BitrixService:
             return None
 
     async def get_activities(self, days: int = None, start_date: str = None, end_date: str = None, 
-                        user_ids: List[str] = None, activity_types: List[str] = None) -> Optional[List[Dict]]:
+                            user_ids: List[str] = None, activity_types: List[str] = None) -> Optional[List[Dict]]:
+        """Получить ВСЕ активности с поддержкой диапазона дат и кэшированием"""
         try:
             # Создаем ключ для кэша
             cache_key = f"activities_{days}_{start_date}_{end_date}_{'-'.join(user_ids) if user_ids else 'all'}_{'-'.join(activity_types) if activity_types else 'all'}"
@@ -96,7 +97,7 @@ class BitrixService:
                     return cached_data
                 elif not cached_data:
                     logger.info("Cache exists but empty - refetching")
-
+            
             # Если не указаны пользователи - используем ТОЛЬКО пресейлов
             if not user_ids:
                 presales_users = await self.get_presales_users()
@@ -123,7 +124,11 @@ class BitrixService:
             
             logger.info(f"Fetching activities from {start_date_str} to {end_date_str}")
 
-            while True:
+            # ОГРАНИЧИМ МАКСИМАЛЬНОЕ КОЛИЧЕСТВО ЗАПРОСОВ
+            max_requests = 20  # Максимум 20 запросов (1000 активностей)
+            request_count = 0
+
+            while request_count < max_requests:
                 params = {
                     'filter[>=CREATED]': start_date_str,
                     'filter[<=CREATED]': end_date_str,
@@ -161,6 +166,7 @@ class BitrixService:
                     break
                     
                 start += 50
+                request_count += 1
                 
                 # Небольшая задержка чтобы не перегружать API
                 await asyncio.sleep(0.1)
