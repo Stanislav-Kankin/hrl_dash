@@ -177,7 +177,7 @@
             <div class="modal-body">
                 <div id="loginForm">
                     <h3>Вход</h3>
-                    <form onsubmit="login(event)">
+                   <form onsubmit="return login(event)">
                         <div class="form-group">
                             <label>Email:</label>
                             <input type="email" id="loginEmail" required>
@@ -193,7 +193,7 @@
 
                 <div id="registerForm" style="display: none;">
                     <h3>Регистрация</h3>
-                    <form onsubmit="register(event)">
+                    <form onsubmit="return register(event)">
                         <div class="form-group">
                             <label>Имя:</label>
                             <input type="text" id="registerName">
