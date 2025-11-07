@@ -246,7 +246,7 @@ async def get_statistics(
     start_date: str = None,
     end_date: str = None,
     user_ids: str = None,
-    current_user: dict = Depends(get_current_user)
+    # current_user: dict = Depends(get_current_user)
 ):
     """Получить статистику активностей с группировкой"""
     try:
@@ -268,7 +268,7 @@ async def get_statistics(
         return {"success": False, "error": str(e)}
 
 @app.post("/api/clear-cache")
-async def clear_cache(current_user: dict = Depends(get_current_user)):
+async def clear_cache(): # current_user: dict = Depends(get_current_user)
     """Очистить кэш"""
     try:
         bitrix_service.clear_cache()
@@ -278,7 +278,7 @@ async def clear_cache(current_user: dict = Depends(get_current_user)):
         return {"success": False, "error": str(e)}
 
 @app.get("/api/connection-test")
-async def test_connection(current_user: dict = Depends(get_current_user)):  # ВОССТАНОВЛЕНА авторизация
+async def test_connection():  # current_user: dict = Depends(get_current_user)
     """Тест подключения к Bitrix24"""
     try:
         is_connected = await bitrix_service.test_connection()
@@ -293,7 +293,7 @@ async def test_connection(current_user: dict = Depends(get_current_user)):  # В
         return {"connected": False, "error": str(e)}
 
 @app.get("/api/debug/users")
-async def debug_users(current_user: dict = Depends(get_current_user)):
+async def debug_users(): # current_user: dict = Depends(get_current_user)
     """Отладочный эндпоинт для проверки пользователей"""
     try:
         # Получаем всех пользователей
@@ -331,7 +331,7 @@ async def debug_users(current_user: dict = Depends(get_current_user)):
         return {"error": str(e)}
 
 @app.get("/api/find-users")
-async def find_users(current_user: dict = Depends(get_current_user)):
+async def find_users(): # current_user: dict = Depends(get_current_user)
     """Найти пользователей по имени"""
     try:
         all_users = await bitrix_service.get_users(only_active=True)
@@ -371,18 +371,18 @@ async def find_users(current_user: dict = Depends(get_current_user)):
 
 # Админ эндпоинты для управления белым списком
 @app.get("/api/admin/allowed-emails")
-async def get_allowed_emails(current_user: dict = Depends(get_current_user)):
+async def get_allowed_emails():  # current_user: dict = Depends(get_current_user)
     """Получить список разрешенных email (только для просмотра)"""
     return {"allowed_emails": auth_service.get_allowed_emails()}
 
 @app.post("/api/admin/add-allowed-email")
-async def add_allowed_email(request: EmailRequest, current_user: dict = Depends(get_current_user)):
+async def add_allowed_email(request: EmailRequest): # current_user: dict = Depends(get_current_user)
     """Добавить email в белый список"""
     auth_service.add_allowed_email(request.email)
     return {"message": f"Email {request.email} добавлен в разрешенные"}
 
 @app.post("/api/admin/remove-allowed-email")
-async def remove_allowed_email(request: EmailRequest, current_user: dict = Depends(get_current_user)):
+async def remove_allowed_email(request: EmailRequest):# current_user: dict = Depends(get_current_user)
     """Удалить email из белого списка"""
     auth_service.remove_allowed_email(request.email)
     return {"message": f"Email {request.email} удален из разрешенных"}

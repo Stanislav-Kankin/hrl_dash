@@ -347,3 +347,210 @@ window.clearCache = async function() {
         alert('❌ Ошибка: ' + error.message);
     }
 };
+
+// Функции для кнопок отладки
+window.debugUsers = async function() {
+    try {
+        const response = await fetch('/api/debug/users');
+        const data = await response.json();
+
+        console.log('Debug users data:', data);
+
+        let message = `Всего пользователей: ${data.total_users}\n`;
+        message += `Пресейл пользователей: ${data.total_presales_users}\n\n`;
+
+        if (data.presales_users) {
+            message += "Пресейл сотрудники:\n";
+            data.presales_users.forEach(user => {
+                message += `- ${user.NAME} ${user.LAST_NAME} (${user.WORK_POSITION || 'нет должности'}) - ID: ${user.ID}\n`;
+            });
+        }
+
+        alert(message);
+
+    } catch (error) {
+        alert('Ошибка отладки: ' + error.message);
+    }
+};
+
+window.findUsers = async function() {
+    try {
+        const response = await fetch('/api/find-users');
+        const data = await response.json();
+
+        console.log('Find users data:', data);
+
+        let message = `Найдено ${data.found_users.length} из ${data.target_names.length} сотрудников\n\n`;
+
+        if (data.found_users.length > 0) {
+            message += "Найденные сотрудники:\n";
+            data.found_users.forEach(user => {
+                message += `- ${user.FULL_NAME} (${user.WORK_POSITION || 'нет должности'}) - ID: ${user.ID}\n`;
+            });
+        } else {
+            message += "Сотрудники не найдены!\n";
+        }
+
+        alert(message);
+
+    } catch (error) {
+        alert('Ошибка поиска: ' + error.message);
+    }
+};
+
+// Функции для админ панели
+window.showAdminPanel = async function() {
+    try {
+        const response = await fetch('/api/admin/allowed-emails');
+        const data = await response.json();
+        
+        let message = '📧 Разрешенные email-адреса:\n\n';
+        data.allowed_emails.forEach(email => {
+            message += `• ${email}\n`;
+        });
+        
+        message += '\nДля добавления/удаления используйте кнопки ниже:';
+        
+        const addEmail = prompt(message + '\n\nВведите email для добавления (или отмена):');
+        if (addEmail) {
+            await addAllowedEmail(addEmail);
+        }
+    } catch (error) {
+        console.error('Admin panel error:', error);
+        alert('❌ Ошибка загрузки списка: ' + error.message);
+    }
+};
+
+window.addAllowedEmail = async function(email = null) {
+    const emailToAdd = email || prompt('Введите email для добавления в белый список:');
+    if (emailToAdd) {
+        try {
+            const response = await fetch('/api/admin/add-allowed-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email: emailToAdd })
+            });
+            const data = await response.json();
+            alert('✅ ' + data.message);
+        } catch (error) {
+            console.error('Add email error:', error);
+            alert('❌ Ошибка добавления: ' + error.message);
+        }
+    }
+};
+
+window.removeAllowedEmail = async function() {
+    const email = prompt('Введите email для удаления из белого списка:');
+    if (email) {
+        try {
+            const response = await fetch('/api/admin/remove-allowed-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email: email })
+            });
+            const data = await response.json();
+            alert('✅ ' + data.message);
+        } catch (error) {
+            console.error('Remove email error:', error);
+            alert('❌ Ошибка удаления: ' + error.message);
+        }
+    }
+};
+
+// Функция для быстрых действий
+window.toggleQuickAction = function(action) {
+    const buttons = document.querySelectorAll('.quick-btn');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+
+    let activityType = 'all';
+    switch (action) {
+        case 'calls':
+            activityType = '2';
+            break;
+        case 'comments':
+            activityType = '6';
+            break;
+        case 'tasks':
+            activityType = '4';
+            break;
+        case 'meetings':
+            activityType = '1';
+            break;
+    }
+
+    document.getElementById('activityTypeSelect').value = activityType;
+    applyFilters();
+};
+
+// Функция детализации
+window.showUserDetails = function(userId) {
+    const userStats = currentUserStats[userId];
+    if (!userStats) return;
+
+    const panel = document.getElementById('detailsPanel');
+    if (!panel) return;
+
+    panel.innerHTML = `<h3>Детализация активностей: ${userStats.user_name}</h3>`;
+
+    if (!userStats.activities || userStats.activities.length === 0) {
+        panel.innerHTML += '<p>Нет данных об активностях</p>';
+        panel.classList.add('active');
+        return;
+    }
+
+    // Группируем активности по дням
+    const activitiesByDay = {};
+    userStats.activities.forEach(activity => {
+        const date = new Date(activity.CREATED).toLocaleDateString('ru-RU');
+        if (!activitiesByDay[date]) {
+            activitiesByDay[date] = [];
+        }
+        activitiesByDay[date].push(activity);
+    });
+
+    // Сортируем дни по убыванию
+    const sortedDays = Object.keys(activitiesByDay).sort((a, b) =>
+        new Date(b.split('.').reverse().join('-')) - new Date(a.split('.').reverse().join('-'))
+    );
+
+    sortedDays.forEach(date => {
+        const dayGroup = document.createElement('div');
+        dayGroup.className = 'day-group';
+
+        let dayHTML = `<div class="day-header">📅 ${date}</div>`;
+
+        // Сортируем активности по времени
+        activitiesByDay[date].sort((a, b) => new Date(a.CREATED) - new Date(b.CREATED));
+
+        activitiesByDay[date].forEach(activity => {
+            const time = new Date(activity.CREATED).toLocaleTimeString('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            const activityType = ACTIVITY_TYPES[activity.TYPE_ID] || { name: 'Другое', class: '' };
+            const description = activity.DESCRIPTION ?
+                activity.DESCRIPTION.replace(/\n/g, '<br>').substring(0, 150) +
+                (activity.DESCRIPTION.length > 150 ? '...' : '') :
+                'Нет описания';
+
+            dayHTML += `
+                <div class="activity-item">
+                    <span class="activity-time">${time}</span>
+                    <span class="activity-type ${activityType.class}">${activityType.name}</span>
+                    <span>${description}</span>
+                </div>
+            `;
+        });
+
+        dayGroup.innerHTML = dayHTML;
+        panel.appendChild(dayGroup);
+    });
+
+    panel.classList.add('active');
+};
