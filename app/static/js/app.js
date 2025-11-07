@@ -20,11 +20,12 @@ const WEEKDAY_NAMES = {
 let allUsers = [];
 let currentUserStats = {};
 let currentStatistics = {};
+let currentUser = null;
 
 // Инициализация при загрузке
 document.addEventListener('DOMContentLoaded', async function () {
     initializeEventListeners();
-    await initializeDashboard();
+    await checkAuthAndInitialize();
 });
 
 function initializeEventListeners() {
@@ -54,7 +55,6 @@ function initializeEventListeners() {
     
     if (startDateInput) {
         startDateInput.addEventListener('change', function() {
-            // Автоматически применяем фильтры при выборе дат
             if (document.getElementById('periodSelect').value === 'custom') {
                 applyFilters();
             }
@@ -63,11 +63,45 @@ function initializeEventListeners() {
     
     if (endDateInput) {
         endDateInput.addEventListener('change', function() {
-            // Автоматически применяем фильтры при выборе дат
             if (document.getElementById('periodSelect').value === 'custom') {
                 applyFilters();
             }
         });
+    }
+
+    // Обработчики для модального окна авторизации
+    const modal = document.getElementById('authModal');
+    const closeBtn = document.querySelector('.close');
+    
+    if (closeBtn) {
+        closeBtn.addEventListener('click', hideAuthModal);
+    }
+    
+    window.addEventListener('click', function(event) {
+        if (event.target === modal) {
+            hideAuthModal();
+        }
+    });
+}
+
+async function checkAuthAndInitialize() {
+    const token = BitrixAPI.authToken;
+    if (!token) {
+        showAuthModal();
+        return;
+    }
+
+    try {
+        const userData = await BitrixAPI.getCurrentUser();
+        if (userData.error) {
+            throw new Error(userData.error);
+        }
+        currentUser = userData;
+        updateUIForAuth();
+        await initializeDashboard();
+    } catch (error) {
+        console.error('Auth check failed:', error);
+        showAuthModal();
     }
 }
 
@@ -92,8 +126,99 @@ async function initializeDashboard() {
         }
     } catch (error) {
         console.error('Error initializing dashboard:', error);
-        showError('resultsBody', `Ошибка инициализации: ${error.message}`);
+        if (error.message !== 'Authentication required') {
+            showError('resultsBody', `Ошибка инициализации: ${error.message}`);
+        }
     }
+}
+
+// Функции аутентификации
+function showAuthModal() {
+    const modal = document.getElementById('authModal');
+    if (modal) {
+        modal.style.display = 'block';
+    }
+}
+
+function hideAuthModal() {
+    const modal = document.getElementById('authModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+function showLogin() {
+    document.getElementById('loginForm').style.display = 'block';
+    document.getElementById('registerForm').style.display = 'none';
+}
+
+function showRegister() {
+    document.getElementById('loginForm').style.display = 'none';
+    document.getElementById('registerForm').style.display = 'block';
+}
+
+async function login(event) {
+    event.preventDefault();
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+
+    try {
+        const data = await BitrixAPI.login(email, password);
+        
+        if (data.access_token) {
+            BitrixAPI.setAuthToken(data.access_token);
+            await checkAuthAndInitialize();
+            hideAuthModal();
+        } else {
+            alert('Ошибка входа: ' + (data.detail || 'Неверные данные'));
+        }
+    } catch (error) {
+        alert('Ошибка сети: ' + error.message);
+    }
+}
+
+async function register(event) {
+    event.preventDefault();
+    const email = document.getElementById('registerEmail').value;
+    const password = document.getElementById('registerPassword').value;
+    const full_name = document.getElementById('registerName').value;
+
+    try {
+        const data = await BitrixAPI.register(email, password, full_name);
+        
+        if (data.email) {
+            alert('Регистрация успешна! Теперь войдите в систему.');
+            showLogin();
+            document.getElementById('loginEmail').value = email;
+        } else {
+            alert('Ошибка регистрации: ' + (data.detail || 'Ошибка сервера'));
+        }
+    } catch (error) {
+        alert('Ошибка сети: ' + error.message);
+    }
+}
+
+function updateUIForAuth() {
+    const header = document.querySelector('.header');
+    if (header && currentUser) {
+        // Добавляем информацию о пользователе в header
+        const userInfo = document.createElement('div');
+        userInfo.style.cssText = 'position: absolute; top: 20px; right: 20px; color: white; text-align: right;';
+        userInfo.innerHTML = `
+            <div>👤 ${currentUser.full_name || currentUser.email}</div>
+            <button onclick="logout()" style="margin-top: 5px; background: rgba(255,255,255,0.2); border: none; color: white; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px;">
+                Выйти
+            </button>
+        `;
+        header.style.position = 'relative';
+        header.appendChild(userInfo);
+    }
+}
+
+function logout() {
+    BitrixAPI.clearAuthToken();
+    currentUser = null;
+    location.reload();
 }
 
 // API функции
@@ -320,7 +445,10 @@ async function applyFilters() {
         }
 
         // Скрываем панель детализации при применении новых фильтров
-        document.getElementById('detailsPanel').classList.remove('active');
+        const detailsPanel = document.getElementById('detailsPanel');
+        if (detailsPanel) {
+            detailsPanel.classList.remove('active');
+        }
     } catch (error) {
         console.error('Error applying filters:', error);
         showError('resultsBody', `Ошибка применения фильтров: ${error.message}`);
@@ -355,18 +483,22 @@ function toggleQuickAction(action) {
 // Вспомогательные функции
 function showLoading(elementId, message = 'Загрузка...') {
     const element = document.getElementById(elementId);
-    element.innerHTML = `<tr><td colspan="8" class="loading">${message}</td></tr>`;
+    if (element) {
+        element.innerHTML = `<tr><td colspan="8" class="loading">${message}</td></tr>`;
+    }
 }
 
 function showError(elementId, message) {
     const element = document.getElementById(elementId);
-    element.innerHTML = `<tr><td colspan="8" style="color: red; text-align: center; padding: 20px;">${message}</td></tr>`;
+    if (element) {
+        element.innerHTML = `<tr><td colspan="8" style="color: red; text-align: center; padding: 20px;">${message}</td></tr>`;
+    }
 }
 
 // Функция отладки пользователей
 async function debugUsers() {
     try {
-        const response = await fetch('/api/debug/users');
+        const response = await BitrixAPI.makeAuthenticatedRequest('/api/debug/users');
         const data = await response.json();
 
         console.log('Debug users data:', data);
@@ -391,7 +523,7 @@ async function debugUsers() {
 // Функция поиска пользователей
 async function findUsers() {
     try {
-        const response = await fetch('/api/find-users');
+        const response = await BitrixAPI.makeAuthenticatedRequest('/api/find-users');
         const data = await response.json();
 
         console.log('Find users data:', data);
@@ -436,6 +568,8 @@ function showUserDetails(userId) {
     if (!userStats) return;
 
     const panel = document.getElementById('detailsPanel');
+    if (!panel) return;
+
     panel.innerHTML = `<h3>Детализация активностей: ${userStats.user_name}</h3>`;
 
     if (!userStats.activities || userStats.activities.length === 0) {

@@ -1,10 +1,15 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timedelta
 from app.services.bitrix_service import BitrixService
 from dotenv import load_dotenv
-from typing import List, Optional, Dict, Any
+
+from fastapi.security import HTTPBearer
+
+from app.schemas.auth import UserRegister, UserLogin, Token, UserResponse
+from app.services.auth_service import auth_service
+from app.dependencies import get_current_user
 
 import os
 import logging
@@ -22,17 +27,68 @@ bitrix_service = BitrixService()
 current_dir = os.path.dirname(os.path.abspath(__file__))
 static_dir = os.path.join(current_dir, "app", "static")
 
-
 # Монтируем статические файлы из папки app/static
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+# Эндпоинты аутентификации (публичные)
+@app.post("/api/auth/register", response_model=UserResponse)
+async def register(user_data: UserRegister):
+    """Регистрация нового пользователя"""
+    try:
+        user = auth_service.register_user(
+            email=user_data.email,
+            password=user_data.password,
+            full_name=user_data.full_name
+        )
+        return user
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+@app.post("/api/auth/login", response_model=Token)
+async def login(user_data: UserLogin):
+    """Вход пользователя"""
+    user = auth_service.authenticate_user(user_data.email, user_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    access_token_expires = timedelta(minutes=auth_service.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = auth_service.create_access_token(
+        data={"sub": user["email"]}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/api/auth/me", response_model=UserResponse)
+async def get_current_user_info(current_user: dict = Depends(get_current_user)):
+    """Получить информацию о текущем пользователе"""
+    return current_user
+
+# Публичные эндпоинты
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
     """Главная страница с дашбордом"""
     return FileResponse("app/main.html")
 
+@app.get("/api/health")
+async def health_check():
+    """Проверка здоровья API"""
+    return {
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "version": "1.0"
+    }
+
+# Защищенные эндпоинты (требуют аутентификации)
 @app.get("/api/users-list")
-async def get_users_list():
+async def get_users_list(current_user: dict = Depends(get_current_user)):
     """Список сотрудников для фильтров"""
     try:
         users = await bitrix_service.get_presales_users()
@@ -67,7 +123,8 @@ async def get_detailed_stats(
     end_date: str = None,
     user_ids: str = None,
     activity_type: str = None,
-    include_statistics: bool = False
+    include_statistics: bool = False,
+    current_user: dict = Depends(get_current_user)
 ):
     """Получить детальную статистику с опциональной аналитикой"""
     try:
@@ -184,7 +241,8 @@ async def get_statistics(
     days: int = None,
     start_date: str = None,
     end_date: str = None,
-    user_ids: str = None
+    user_ids: str = None,
+    current_user: dict = Depends(get_current_user)
 ):
     """Получить статистику активностей с группировкой"""
     try:
@@ -206,7 +264,7 @@ async def get_statistics(
         return {"success": False, "error": str(e)}
 
 @app.post("/api/clear-cache")
-async def clear_cache():
+async def clear_cache(current_user: dict = Depends(get_current_user)):
     """Очистить кэш"""
     try:
         bitrix_service.clear_cache()
@@ -216,7 +274,7 @@ async def clear_cache():
         return {"success": False, "error": str(e)}
 
 @app.get("/api/connection-test")
-async def test_connection():
+async def test_connection(current_user: dict = Depends(get_current_user)):
     """Тест подключения к Bitrix24"""
     try:
         is_connected = await bitrix_service.test_connection()
@@ -230,17 +288,8 @@ async def test_connection():
         logger.error(f"Connection test error: {str(e)}")
         return {"connected": False, "error": str(e)}
 
-@app.get("/api/health")
-async def health_check():
-    """Проверка здоровья API"""
-    return {
-        "status": "ok",
-        "timestamp": datetime.now().isoformat(),
-        "version": "1.0"
-    }
-
 @app.get("/api/debug/users")
-async def debug_users():
+async def debug_users(current_user: dict = Depends(get_current_user)):
     """Отладочный эндпоинт для проверки пользователей"""
     try:
         # Получаем всех пользователей
@@ -278,7 +327,7 @@ async def debug_users():
         return {"error": str(e)}
 
 @app.get("/api/find-users")
-async def find_users():
+async def find_users(current_user: dict = Depends(get_current_user)):
     """Найти пользователей по имени"""
     try:
         all_users = await bitrix_service.get_users(only_active=True)
