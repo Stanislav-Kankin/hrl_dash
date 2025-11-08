@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bitrix24 Analytics Dashboard</title>
-    <button id="authButton" onclick="showAuthModal()" style="
+      <button id="authButton" onclick="showAuthModal()" style="
             position: absolute;
             top: 20px;
             right: 20px;
@@ -23,141 +23,146 @@
 </head>
 
 <body>
-    <div class="filters-section">
-        <div class="filter-group">
-            <div class="filter-item">
-                <label>Сотрудники:</label>
-                <select id="employeesSelect">
-                    <option value="all">Все сотрудники</option>
-                </select>
-            </div>
-
-            <div class="filter-item" id="customDateRange">
-                <label>Диапазон дат:</label>
-                <div class="date-range-inputs">
-                    <input type="date" id="startDate">
-                    <span class="date-range-separator">—</span>
-                    <input type="date" id="endDate">
-                </div>
-            </div>
-
-            <div class="filter-item">
-                <label>Тип активности:</label>
-                <select id="activityTypeSelect">
-                    <option value="all">Все активности</option>
-                    <option value="2">Звонки</option>
-                    <option value="6">Комментарии</option>
-                    <option value="4">Задачи</option>
-                    <option value="1">Встречи</option>
-                </select>
-            </div>
-
-            <div class="filter-item" style="min-width: auto;">
-                <label style="visibility: hidden;">Действия</label>
-                <div style="display: flex; gap: 10px;">
-                    <button class="apply-btn" onclick="applyFilters()">Применить</button>
-                    <button class="clear-btn" onclick="clearCache()" title="Очистить кэш">🔄</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="quick-actions">
-        <div class="quick-buttons">
-            <button class="quick-btn" onclick="testConnection()">Тест подключения</button>
-            <button class="quick-btn" onclick="debugUsers()">🐛 Отладка</button>
-            <button class="quick-btn" onclick="findUsers()">🔍 Поиск</button>
-            <button class="quick-btn" onclick="showAdminPanel()">👑 Админ</button>
-            <button class="quick-btn" onclick="addAllowedEmail()">➕ Добавить email</button>
-            <button class="quick-btn" onclick="localStorage.removeItem('auth_token'); location.reload();">🔄
-                Сбросить авторизацию</button>
-        </div>
-    </div>
-
-    <div class="results-section">
-        <div class="summary-cards">
-            <div class="summary-card">
-                <h3>Активных сотрудников</h3>
-                <div class="value" id="activeUsers">0</div>
-                <div class="subtext" id="usersMessage">Найдено 0 сотрудников</div>
-            </div>
-            <div class="summary-card">
-                <h3>Всего активностей</h3>
-                <div class="value" id="totalActivities">0</div>
-                <div class="subtext" id="periodMessage">за 30 дней</div>
-            </div>
-            <div class="summary-card">
-                <h3>Звонки</h3>
-                <div class="value" id="totalCalls">0</div>
-                <div class="subtext">всего совершено</div>
-            </div>
-            <div class="summary-card">
-                <h3>Комментарии</h3>
-                <div class="value" id="totalComments">0</div>
-                <div class="subtext">написано</div>
-            </div>
-            <div class="summary-card">
-                <h3>Среднее в день</h3>
-                <div class="value" id="avgPerDay">0</div>
-                <div class="subtext">активностей</div>
-            </div>
-            <div class="summary-card">
-                <h3>Самый активный день</h3>
-                <div class="value" id="mostActiveDay">-</div>
-                <div class="subtext">день недели</div>
-            </div>
+    <div class="dashboard">
+        <div class="header">
+            <h1>📊 Bitrix24 Analytics Dashboard</h1>
+            <p>Дашборд для анализа активности сотрудников</p>
         </div>
 
-        <!-- Секция графиков -->
-        <div class="charts-section">
-            <div class="charts-row">
-                <div class="chart-container">
-                    <h3>📈 Активность по дням недели</h3>
-                    <canvas id="weekActivityChart"></canvas>
+        <div class="filters-section">
+            <div class="filter-group">
+                <div class="filter-item">
+                    <label>Сотрудники:</label>
+                    <select id="employeesSelect">
+                        <option value="all">Все сотрудники</option>
+                    </select>
                 </div>
-                <div class="chart-container">
-                    <h3>🕒 Активность по часам</h3>
-                    <canvas id="hourActivityChart"></canvas>
+
+                <div class="filter-item" id="customDateRange">
+                    <label>Диапазон дат:</label>
+                    <div class="date-range-inputs">
+                        <input type="date" id="startDate">
+                        <span class="date-range-separator">—</span>
+                        <input type="date" id="endDate">
+                    </div>
                 </div>
-            </div>
-            <div class="charts-row">
-                <div class="chart-container">
-                    <h3>📊 Распределение по типам</h3>
-                    <canvas id="typeDistributionChart"></canvas>
+
+                <div class="filter-item">
+                    <label>Тип активности:</label>
+                    <select id="activityTypeSelect">
+                        <option value="all">Все активности</option>
+                        <option value="2">Звонки</option>
+                        <option value="6">Комментарии</option>
+                        <option value="4">Задачи</option>
+                        <option value="1">Встречи</option>
+                    </select>
                 </div>
-                <div class="chart-container">
-                    <h3>📅 Активность по дням</h3>
-                    <canvas id="dailyActivityChart"></canvas>
+
+                <div class="filter-item" style="min-width: auto;">
+                    <label style="visibility: hidden;">Действия</label>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="apply-btn" onclick="applyFilters()">Применить</button>
+                        <button class="clear-btn" onclick="clearCache()" title="Очистить кэш">🔄</button>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="table-container">
-            <table id="resultsTable">
-                <thead>
-                    <tr>
-                        <th>Сотрудник</th>
-                        <th>Дни активности</th>
-                        <th>Звонки</th>
-                        <th>Комментарии</th>
-                        <th>Задачи</th>
-                        <th>Всего</th>
-                        <th>Последняя активность</th>
-                        <th>Действия</th>
-                    </tr>
-                </thead>
-                <tbody id="resultsBody">
-                    <tr>
-                        <td colspan="8" class="loading">Загрузка данных...</td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="quick-actions">
+            <div class="quick-buttons">
+                <button class="quick-btn" onclick="testConnection()">Тест подключения</button>
+                <button class="quick-btn" onclick="debugUsers()">🐛 Отладка</button>
+                <button class="quick-btn" onclick="findUsers()">🔍 Поиск</button>
+                <button class="quick-btn" onclick="showAdminPanel()">👑 Админ</button>
+                <button class="quick-btn" onclick="addAllowedEmail()">➕ Добавить email</button>
+                <button class="quick-btn" onclick="localStorage.removeItem('auth_token'); location.reload();">🔄 Сбросить авторизацию</button>
+            </div>
         </div>
 
-        <div class="details-panel" id="detailsPanel">
-            <!-- Детализация будет загружаться здесь -->
+        <div class="results-section">
+            <div class="summary-cards">
+                <div class="summary-card">
+                    <h3>Активных сотрудников</h3>
+                    <div class="value" id="activeUsers">0</div>
+                    <div class="subtext" id="usersMessage">Найдено 0 сотрудников</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Всего активностей</h3>
+                    <div class="value" id="totalActivities">0</div>
+                    <div class="subtext" id="periodMessage">за 30 дней</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Звонки</h3>
+                    <div class="value" id="totalCalls">0</div>
+                    <div class="subtext">всего совершено</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Комментарии</h3>
+                    <div class="value" id="totalComments">0</div>
+                    <div class="subtext">написано</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Среднее в день</h3>
+                    <div class="value" id="avgPerDay">0</div>
+                    <div class="subtext">активностей</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Самый активный день</h3>
+                    <div class="value" id="mostActiveDay">-</div>
+                    <div class="subtext">день недели</div>
+                </div>
+            </div>
+
+            <!-- Секция графиков -->
+            <div class="charts-section">
+                <div class="charts-row">
+                    <div class="chart-container">
+                        <h3>📈 Активность по дням недели</h3>
+                        <canvas id="weekActivityChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3>🕒 Активность по часам</h3>
+                        <canvas id="hourActivityChart"></canvas>
+                    </div>
+                </div>
+                <div class="charts-row">
+                    <div class="chart-container">
+                        <h3>📊 Распределение по типам</h3>
+                        <canvas id="typeDistributionChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3>📅 Активность по дням</h3>
+                        <canvas id="dailyActivityChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>Сотрудник</th>
+                            <th>Дни активности</th>
+                            <th>Звонки</th>
+                            <th>Комментарии</th>
+                            <th>Задачи</th>
+                            <th>Всего</th>
+                            <th>Последняя активность</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody">
+                        <tr>
+                            <td colspan="8" class="loading">Загрузка данных...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="details-panel" id="detailsPanel">
+                <!-- Детализация будет загружаться здесь -->
+            </div>
         </div>
-    </div>
     </div>
 
     <div id="authModal" class="modal" style="display: none;">
@@ -356,17 +361,17 @@
             }
         }
     </style>
-    <!-- Индикатор загрузки -->
-    <div id="loadingOverlay" class="loading-overlay">
-        <div class="loading-spinner">
-            <div class="spinner"></div>
-            <div id="loadingText">Загрузка данных...</div>
-        </div>
+<!-- Индикатор загрузки -->
+<div id="loadingOverlay" class="loading-overlay">
+    <div class="loading-spinner">
+        <div class="spinner"></div>
+        <div id="loadingText">Загрузка данных...</div>
     </div>
+</div>
 
-    <script src="/static/js/api.js"></script>
-    <script src="/static/js/charts.js"></script>
-    <script src="/static/js/app.js"></script>
+<script src="/static/js/api.js"></script>
+<script src="/static/js/charts.js"></script>
+<script src="/static/js/app.js"></script>
 </body>
 
 </html>

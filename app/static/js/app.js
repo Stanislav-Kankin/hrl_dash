@@ -1,14 +1,3 @@
-// ДОБАВЬТЕ В НАЧАЛО app.js
-console.log('✅ app.js loaded, checking elements...');
-const elements = [
-    'employeesSelect', 'activityTypeSelect', 'startDate', 'endDate'
-];
-
-elements.forEach(id => {
-    const element = document.getElementById(id);
-    console.log(`🔍 ${id}:`, element ? 'FOUND' : 'NOT FOUND');
-});
-
 // app.js - основной файл приложения
 const ACTIVITY_TYPES = {
     "1": { name: "Встреча", class: "badge-meeting" },
@@ -48,13 +37,28 @@ function initializeEventListeners() {
 }
 
 function setDefaultDates() {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 30);
+    try {
+        const startDateEl = document.getElementById('startDate');
+        const endDateEl = document.getElementById('endDate');
+        
+        if (!startDateEl || !endDateEl) {
+            console.log('⏳ Date elements not ready yet, retrying...');
+            setTimeout(setDefaultDates, 100);
+            return;
+        }
 
-    const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - 30);
 
-    document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
-    document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
+        const endDate = new Date();
+
+        startDateEl.value = startDate.toISOString().split('T')[0];
+        endDateEl.value = endDate.toISOString().split('T')[0];
+        
+        console.log('✅ Default dates set');
+    } catch (error) {
+        console.error('❌ Error setting default dates:', error);
+    }
 }
 
 function initAuth() {
@@ -111,6 +115,9 @@ async function initializeDashboard() {
     try {
         console.log('📊 Initializing dashboard...');
 
+        // Ждем загрузки DOM элементов
+        await ensureElementsLoaded();
+        
         ActivityCharts.initCharts();
         await loadUsersList();
 
@@ -129,7 +136,37 @@ async function initializeDashboard() {
     }
 }
 
-// Добавьте эту функцию
+// НОВАЯ ФУНКЦИЯ: Гарантируем что все элементы загружены
+async function ensureElementsLoaded() {
+    const requiredElements = [
+        'employeesSelect', 
+        'activityTypeSelect', 
+        'startDate', 
+        'endDate'
+    ];
+    
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    while (attempts < maxAttempts) {
+        const allFound = requiredElements.every(id => {
+            const element = document.getElementById(id);
+            return element !== null;
+        });
+        
+        if (allFound) {
+            console.log('✅ All required elements loaded');
+            return;
+        }
+        
+        attempts++;
+        console.log(`⏳ Waiting for elements... attempt ${attempts}/${maxAttempts}`);
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    throw new Error('Some required elements failed to load');
+}
+
 function showLoginPrompt() {
     const tbody = document.getElementById('resultsBody');
     const summaryCards = document.querySelector('.summary-cards');
@@ -153,7 +190,137 @@ function showLoginPrompt() {
     `;
 }
 
-// ОСТАЛЬНЫЕ ФУНКЦИИ ОСТАЮТСЯ ПРЕЖНИМИ (login, register, etc.)
+// Функции аутентификации
+function showAuthModal() {
+    console.log('🔄 Showing auth modal');
+    const modal = document.getElementById('authModal');
+    if (modal) {
+        modal.style.display = 'block';
+        showLogin();
+    } else {
+        console.error('❌ Auth modal not found!');
+    }
+}
+
+function hideAuthModal() {
+    const modal = document.getElementById('authModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+function showLogin() {
+    document.getElementById('loginForm').style.display = 'block';
+    document.getElementById('registerForm').style.display = 'none';
+}
+
+function showRegister() {
+    document.getElementById('loginForm').style.display = 'none';
+    document.getElementById('registerForm').style.display = 'block';
+}
+
+async function login(event) {
+    if (event) event.preventDefault();
+
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+
+    console.log('🔐 Login attempt:', { email, password });
+
+    if (!email || !password) {
+        alert('❌ Пожалуйста, заполните все поля');
+        return false;
+    }
+
+    try {
+        console.log('🔐 Attempting login for:', email);
+        const data = await BitrixAPI.login(email, password);
+        console.log('🔐 Login response:', data);
+
+        if (data.access_token) {
+            BitrixAPI.setAuthToken(data.access_token);
+            console.log('✅ Token set');
+            hideAuthModal();
+            await checkAuthStatus();
+        } else {
+            console.error('❌ No token in response');
+            alert('Ошибка: токен не получен');
+        }
+    } catch (error) {
+        console.error('❌ Login error:', error);
+        alert('❌ Ошибка входа: ' + error.message);
+    }
+
+    return false;
+}
+
+async function register(event) {
+    if (event) event.preventDefault();
+
+    const email = document.getElementById('registerEmail').value;
+    const password = document.getElementById('registerPassword').value;
+    const full_name = document.getElementById('registerName').value;
+
+    if (!email || !password) {
+        alert('❌ Пожалуйста, заполните email и пароль');
+        return false;
+    }
+
+    try {
+        console.log('🔐 Attempting registration for:', email);
+        const data = await BitrixAPI.register(email, password, full_name);
+        console.log('🔐 Registration response:', data);
+
+        if (data.email) {
+            alert('✅ Регистрация успешна! Теперь войдите в систему.');
+            showLogin();
+        }
+    } catch (error) {
+        console.error('❌ Registration error:', error);
+        alert('❌ Ошибка регистрации: ' + error.message);
+    }
+
+    return false;
+}
+
+function updateUIForAuth() {
+    const authButton = document.getElementById('authButton');
+    if (authButton && currentUser) {
+        authButton.textContent = `👤 ${currentUser.full_name || currentUser.email} (Выйти)`;
+        authButton.onclick = logout;
+    }
+}
+
+function logout() {
+    BitrixAPI.clearAuthToken();
+    currentUser = null;
+
+    const authButton = document.getElementById('authButton');
+    if (authButton) {
+        authButton.textContent = '🔐 Вход для админа';
+        authButton.onclick = showAuthModal;
+    }
+
+    alert('✅ Вы вышли из системы');
+}
+
+// Основные функции
+async function loadUsersList() {
+    try {
+        showLoading('resultsBody', 'Загрузка сотрудников...');
+        const data = await BitrixAPI.getUsersList();
+
+        if (data.users) {
+            allUsers = data.users;
+            updateUserSelect();
+        } else {
+            throw new Error(data.error || 'Не удалось загрузить сотрудников');
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки сотрудников:', error);
+        showError('resultsBody', `Ошибка: ${error.message}`);
+    }
+}
 
 async function applyFilters() {
     try {
@@ -163,38 +330,12 @@ async function applyFilters() {
             return;
         }
 
-        console.log('🔍 Starting applyFilters...');
-
-        // ДЕБАГ: Проверим какие элементы существуют
-        console.log('🔍 Available elements:', {
-            employeesSelect: document.getElementById('employeesSelect'),
-            activityTypeSelect: document.getElementById('activityTypeSelect'),
-            startDate: document.getElementById('startDate'),
-            endDate: document.getElementById('endDate')
-        });
-
         showLoading('resultsBody', 'Загрузка данных...');
 
         const employeeFilter = document.getElementById('employeesSelect').value;
         const activityTypeFilter = document.getElementById('activityTypeSelect').value;
-        const startDateInput = document.getElementById('startDate');
-        const endDateInput = document.getElementById('endDate');
-
-        // ПРОВЕРЯЕМ ЧТО ЭЛЕМЕНТЫ СУЩЕСТВУЮТ
-        if (!startDateInput || !endDateInput) {
-            console.error('❌ Date inputs not found:', {
-                startDateInput,
-                endDateInput,
-                allIds: document.querySelectorAll('[id]')
-            });
-            showError('resultsBody', 'Ошибка: поля дат не найдены. Проверьте HTML структуру.');
-            return;
-        }
-
-        const startDate = startDateInput.value;
-        const endDate = endDateInput.value;
-
-        console.log('📅 Date values:', { startDate, endDate });
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
 
         // ВАЛИДАЦИЯ ДАТ
         if (!startDate || !endDate) {
@@ -299,7 +440,6 @@ function displayUserStats(statsData) {
     console.log('✅ User stats displayed successfully');
 }
 
-
 function updateUserSelect() {
     const select = document.getElementById('employeesSelect');
     select.innerHTML = '<option value="all">Все сотрудники</option>';
@@ -328,8 +468,7 @@ function showError(elementId, message) {
 }
 
 // Функция детализации
-// Функция детализации - ИСПРАВЛЕННАЯ ВЕРСИЯ
-window.showUserDetails = async function (userId) {
+window.showUserDetails = async function(userId) {
     console.log('🔍 Showing details for user:', userId);
 
     const userStats = currentUserStats[userId];
@@ -351,10 +490,10 @@ window.showUserDetails = async function (userId) {
     try {
         // ЗАПРАШИВАЕМ АКТИВНОСТИ ОТДЕЛЬНО
         const response = await fetch(`/api/user-activities/${userId}?${new URLSearchParams({
-            start_date: document.getElementById('startDate')?.value || '',
-            end_date: document.getElementById('endDate')?.value || ''
+            start_date: document.getElementById('startDate').value,
+            end_date: document.getElementById('endDate').value
         })}`);
-
+        
         const data = await response.json();
 
         if (!data.success) {
@@ -363,7 +502,7 @@ window.showUserDetails = async function (userId) {
 
         const activities = data.activities || [];
         const activitiesByDay = {};
-
+        
         if (activities && activities.length > 0) {
             activities.forEach(activity => {
                 try {
@@ -405,7 +544,7 @@ window.showUserDetails = async function (userId) {
                 const date = new Date(day);
                 const dayName = date.toLocaleDateString('ru-RU', {
                     weekday: 'long',
-                    year: 'numeric',
+                    year: 'numeric', 
                     month: 'long',
                     day: 'numeric'
                 });
