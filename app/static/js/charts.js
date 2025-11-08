@@ -3,11 +3,20 @@ class ActivityCharts {
     static charts = {};
 
     static initCharts() {
+        if (Object.keys(this.charts).length > 0) {
+            console.log('📊 Charts already initialized, skipping re-initialization');
+            return;
+        }
+
+        console.log('📊 Initializing charts for the first time...');
+
         // Инициализируем все canvas элементы для графиков
         this.charts.weekActivity = this.createWeekActivityChart();
         this.charts.hourActivity = this.createHourActivityChart();
         this.charts.typeDistribution = this.createTypeDistributionChart();
         this.charts.dailyActivity = this.createDailyActivityChart();
+
+        console.log('✅ Charts initialized successfully');
     }
 
     static createWeekActivityChart() {
@@ -50,13 +59,13 @@ class ActivityCharts {
 
     static createHourActivityChart() {
         const ctx = document.getElementById('hourActivityChart').getContext('2d');
-        
+
         // Только рабочие часы с 06:00 до 19:00
-        const workHours = Array.from({length: 14}, (_, i) => {
+        const workHours = Array.from({ length: 14 }, (_, i) => {
             const hour = i + 6; // Начинаем с 6 утра
             return `${hour.toString().padStart(2, '0')}:00`;
         });
-        
+
         return new Chart(ctx, {
             type: 'line',
             data: {
@@ -84,10 +93,10 @@ class ActivityCharts {
                     },
                     tooltip: {
                         callbacks: {
-                            title: function(context) {
+                            title: function (context) {
                                 return `Время: ${context[0].label}`;
                             },
-                            label: function(context) {
+                            label: function (context) {
                                 return `Активностей: ${context.parsed.y}`;
                             }
                         }
@@ -180,7 +189,7 @@ class ActivityCharts {
                     },
                     tooltip: {
                         callbacks: {
-                            label: function(context) {
+                            label: function (context) {
                                 return `Активностей: ${context.parsed.y}`;
                             }
                         }
@@ -217,9 +226,9 @@ class ActivityCharts {
         if (this.charts.weekActivity) {
             const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
             const weekData = weekDays.map(day => statistics.weekday_stats?.[day] || 0);
-            
+
             console.log('Week data:', weekData);
-            
+
             this.charts.weekActivity.data.datasets[0].data = weekData;
             this.charts.weekActivity.update();
         }
@@ -232,9 +241,9 @@ class ActivityCharts {
                 const hourKey = i.toString().padStart(2, '0');
                 workHourData.push(statistics.hourly_stats[hourKey] || 0);
             }
-            
+
             console.log('Work hour data (06:00-19:00):', workHourData);
-            
+
             this.charts.hourActivity.data.datasets[0].data = workHourData;
             this.charts.hourActivity.update();
         }
@@ -246,15 +255,15 @@ class ActivityCharts {
                 statistics.type_stats?.['6'] || 0, // Комментарии
                 statistics.type_stats?.['4'] || 0, // Задачи
                 statistics.type_stats?.['1'] || 0, // Встречи
-                (statistics.total_activities || 0) - 
-                ((statistics.type_stats?.['2'] || 0) + 
-                 (statistics.type_stats?.['6'] || 0) + 
-                 (statistics.type_stats?.['4'] || 0) + 
-                 (statistics.type_stats?.['1'] || 0)) // Другие
+                (statistics.total_activities || 0) -
+                ((statistics.type_stats?.['2'] || 0) +
+                    (statistics.type_stats?.['6'] || 0) +
+                    (statistics.type_stats?.['4'] || 0) +
+                    (statistics.type_stats?.['1'] || 0)) // Другие
             ];
-            
+
             console.log('Type data:', typeData);
-            
+
             this.charts.typeDistribution.data.datasets[0].data = typeData;
             this.charts.typeDistribution.update();
         }
@@ -266,10 +275,10 @@ class ActivityCharts {
                 return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
             });
             const dailyData = statistics.daily_stats.map(day => day.total);
-            
+
             console.log('Daily labels:', dailyLabels);
             console.log('Daily data:', dailyData);
-            
+
             this.charts.dailyActivity.data.labels = dailyLabels;
             this.charts.dailyActivity.data.datasets[0].data = dailyData;
             this.charts.dailyActivity.update();

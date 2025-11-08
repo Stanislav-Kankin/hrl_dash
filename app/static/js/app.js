@@ -182,8 +182,10 @@ async function initializeDashboard() {
         // Ждем загрузки всех необходимых элементов
         await waitForCriticalElements();
 
-        // Инициализируем графики
-        ActivityCharts.initCharts();
+        if (!BitrixAPI.authToken || !currentUser) {
+            // Инициализируем графики только если не авторизованы
+            ActivityCharts.initCharts();
+        }
 
         // Загружаем список пользователей
         await loadUsersList();
@@ -292,6 +294,7 @@ async function applyFilters() {
         }
 
         // Получаем значения фильтров
+        const employeeFilter = employeesSelect.value;
         const activityTypeFilter = activityTypeSelect.value;
         const startDate = startDateInput.value;
         const endDate = endDateInput.value;
@@ -517,7 +520,7 @@ function logout() {
 }
 
 // ФУНКЦИЯ ДЕТАЛИЗАЦИИ
-window.showUserDetails = async function(userId) {
+window.showUserDetails = async function (userId) {
     console.log('🔍 Showing details for user:', userId);
 
     const userStats = currentUserStats[userId];
@@ -539,7 +542,7 @@ window.showUserDetails = async function(userId) {
         // 🔴 ИСПРАВЛЕНИЕ: ОБЪЯВЛЯЕМ ПЕРЕМЕННЫЕ
         const startDateInput = document.getElementById('startDate');
         const endDateInput = document.getElementById('endDate');
-        
+
         if (!startDateInput || !endDateInput) {
             throw new Error('Date elements not found');
         }
@@ -548,7 +551,7 @@ window.showUserDetails = async function(userId) {
             start_date: startDateInput.value,
             end_date: endDateInput.value
         })}`);
-        
+
         const data = await response.json();
 
         if (!data.success) {
@@ -557,7 +560,7 @@ window.showUserDetails = async function(userId) {
 
         const activities = data.activities || [];
         const activitiesByDay = {};
-        
+
         if (activities && activities.length > 0) {
             activities.forEach(activity => {
                 try {
@@ -599,7 +602,7 @@ window.showUserDetails = async function(userId) {
                 const date = new Date(day);
                 const dayName = date.toLocaleDateString('ru-RU', {
                     weekday: 'long',
-                    year: 'numeric', 
+                    year: 'numeric',
                     month: 'long',
                     day: 'numeric'
                 });
