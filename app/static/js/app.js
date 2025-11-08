@@ -421,68 +421,6 @@ async function loadUsersList() {
     }
 }
 
-async function applyFilters() {
-    try {
-        // ПРОВЕРЯЕМ АВТОРИЗАЦИЮ
-        if (!BitrixAPI.authToken) {
-            showLoginPrompt();
-            return;
-        }
-
-        showLoading('resultsBody', 'Загрузка данных...');
-
-        // ПРОВЕРЯЕМ ЧТО ЭЛЕМЕНТЫ СУЩЕСТВУЮТ
-        const employeesSelect = document.getElementById('employeesSelect');
-        const activityTypeSelect = document.getElementById('activityTypeSelect');
-        const startDateInput = document.getElementById('startDate');
-        const endDateInput = document.getElementById('endDate');
-
-        if (!employeesSelect || !activityTypeSelect || !startDateInput || !endDateInput) {
-            console.error('❌ Some elements not found:', {
-                employeesSelect: !!employeesSelect,
-                activityTypeSelect: !!activityTypeSelect,
-                startDate: !!startDateInput,
-                endDate: !!endDateInput
-            });
-            showError('resultsBody', 'Ошибка загрузки интерфейса. Пожалуйста, обновите страницу.');
-            return;
-        }
-
-        const employeeFilter = employeesSelect.value;
-        const activityTypeFilter = activityTypeSelect.value;
-        const startDate = startDateInput.value;
-        const endDate = endDateInput.value;
-
-        // ВАЛИДАЦИЯ ДАТ
-        if (!startDate || !endDate) {
-            alert('❌ Пожалуйста, выберите диапазон дат');
-            return;
-        }
-
-        if (new Date(startDate) > new Date(endDate)) {
-            alert('❌ Дата начала не может быть больше даты окончания');
-            return;
-        }
-
-        const filters = {
-            user_ids: employeeFilter === 'all' ? [] : [employeeFilter],
-            activity_type: activityTypeFilter === 'all' ? null : activityTypeFilter,
-            start_date: startDate,
-            end_date: endDate
-        };
-
-        console.log('🔍 Applying filters:', filters);
-
-        const statsData = await BitrixAPI.getDetailedStats(filters);
-        if (statsData) {
-            displayUserStats(statsData);
-        }
-
-    } catch (error) {
-        console.error('Error applying filters:', error);
-        showError('resultsBody', `Ошибка: ${error.message}`);
-    }
-}
 
 function displayUserStats(statsData) {
     console.log('📊 Displaying user stats:', statsData);
