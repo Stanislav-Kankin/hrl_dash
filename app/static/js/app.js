@@ -1,3 +1,14 @@
+// ДОБАВЬТЕ В НАЧАЛО app.js
+console.log('✅ app.js loaded, checking elements...');
+const elements = [
+    'employeesSelect', 'activityTypeSelect', 'startDate', 'endDate'
+];
+
+elements.forEach(id => {
+    const element = document.getElementById(id);
+    console.log(`🔍 ${id}:`, element ? 'FOUND' : 'NOT FOUND');
+});
+
 // app.js - основной файл приложения
 const ACTIVITY_TYPES = {
     "1": { name: "Встреча", class: "badge-meeting" },
@@ -152,6 +163,16 @@ async function applyFilters() {
             return;
         }
 
+        console.log('🔍 Starting applyFilters...');
+
+        // ДЕБАГ: Проверим какие элементы существуют
+        console.log('🔍 Available elements:', {
+            employeesSelect: document.getElementById('employeesSelect'),
+            activityTypeSelect: document.getElementById('activityTypeSelect'),
+            startDate: document.getElementById('startDate'),
+            endDate: document.getElementById('endDate')
+        });
+
         showLoading('resultsBody', 'Загрузка данных...');
 
         const employeeFilter = document.getElementById('employeesSelect').value;
@@ -161,13 +182,19 @@ async function applyFilters() {
 
         // ПРОВЕРЯЕМ ЧТО ЭЛЕМЕНТЫ СУЩЕСТВУЮТ
         if (!startDateInput || !endDateInput) {
-            console.error('❌ Date inputs not found');
-            showError('resultsBody', 'Ошибка: поля дат не найдены');
+            console.error('❌ Date inputs not found:', {
+                startDateInput,
+                endDateInput,
+                allIds: document.querySelectorAll('[id]')
+            });
+            showError('resultsBody', 'Ошибка: поля дат не найдены. Проверьте HTML структуру.');
             return;
         }
 
         const startDate = startDateInput.value;
         const endDate = endDateInput.value;
+
+        console.log('📅 Date values:', { startDate, endDate });
 
         // ВАЛИДАЦИЯ ДАТ
         if (!startDate || !endDate) {
