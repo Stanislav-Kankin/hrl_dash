@@ -81,8 +81,7 @@ class BitrixService:
             return None
 
     async def get_activities(self, days: int = None, start_date: str = None, end_date: str = None, 
-                            user_ids: List[str] = None, activity_types: List[str] = None) -> Optional[List[Dict]]:
-        """Получить ВСЕ активности с поддержкой диапазона дат и кэшированием"""
+                        user_ids: List[str] = None, activity_types: List[str] = None) -> Optional[List[Dict]]:
         try:
             # Создаем ключ для кэша
             cache_key = f"activities_{days}_{start_date}_{end_date}_{'-'.join(user_ids) if user_ids else 'all'}_{'-'.join(activity_types) if activity_types else 'all'}"
@@ -105,21 +104,27 @@ class BitrixService:
                     user_ids = [str(user['ID']) for user in presales_users]
                     print(f"🎯 Using presales users: {user_ids}")
             
-            # Определяем даты периода
+            # ОПРЕДЕЛЯЕМ ДАТЫ ПЕРИОДА - ИСПРАВЛЕНИЕ!
             if start_date and end_date:
-                start_date_obj = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-                end_date_obj = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-                # ДОБАВЛЯЕМ 23:59:59 к конечной дате
+                # Если переданы даты как строки (из формы)
+                start_date_obj = datetime.fromisoformat(start_date)
+                end_date_obj = datetime.fromisoformat(end_date)
+                # ДОБАВЛЯЕМ 23:59:59 к конечной дате чтобы охватить весь день
                 end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
             elif days:
-                start_date_obj = datetime.now() - timedelta(days=days)
+                # Если передан период в днях
                 end_date_obj = datetime.now()
+                start_date_obj = end_date_obj - timedelta(days=days)
             else:
-                start_date_obj = datetime.now() - timedelta(days=30)
+                # По умолчанию 30 дней
                 end_date_obj = datetime.now()
+                start_date_obj = end_date_obj - timedelta(days=30)
             
+            # Форматируем даты для Bitrix API
             start_date_str = start_date_obj.strftime("%Y-%m-%dT%H:%M:%S")
             end_date_str = end_date_obj.strftime("%Y-%m-%dT%H:%M:%S")
+            
+            print(f"📅 Date range: {start_date_str} to {end_date_str}")
             
             all_activities = []
             start = 0
@@ -127,7 +132,7 @@ class BitrixService:
             logger.info(f"Fetching activities from {start_date_str} to {end_date_str}")
 
             # ОГРАНИЧИМ МАКСИМАЛЬНОЕ КОЛИЧЕСТВО ЗАПРОСОВ
-            max_requests = 20  # Максимум 20 запросов (1000 активностей)
+            max_requests = 20
             request_count = 0
 
             while request_count < max_requests:
@@ -179,7 +184,7 @@ class BitrixService:
             self._cache[cache_key] = (datetime.now(), all_activities)
             
             return all_activities
-            
+        
         except Exception as e:
             logger.error(f"Error getting activities: {str(e)}")
             return None
@@ -194,7 +199,7 @@ class BitrixService:
                     return cached_data
 
             # Жестко задаем ID всех найденных пресейл сотрудников
-            known_presales_ids = ['8860', '8988', '17087', '17919', '17395', '18065', '14255']
+            known_presales_ids = ['8860', '8988', '17087', '17919', '17395', '18065']
             
             presales_users = []
             
