@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bitrix24 Analytics Dashboard</title>
-      <button id="authButton" onclick="showAuthModal()" style="
+    <button id="authButton" onclick="showAuthModal()" style="
             position: absolute;
             top: 20px;
             right: 20px;
@@ -75,7 +75,8 @@
                 <button class="quick-btn" onclick="findUsers()">🔍 Поиск</button>
                 <button class="quick-btn" onclick="showAdminPanel()">👑 Админ</button>
                 <button class="quick-btn" onclick="addAllowedEmail()">➕ Добавить email</button>
-                <button class="quick-btn" onclick="localStorage.removeItem('auth_token'); location.reload();">🔄 Сбросить авторизацию</button>
+                <button class="quick-btn" onclick="localStorage.removeItem('auth_token'); location.reload();">🔄
+                    Сбросить авторизацию</button>
             </div>
         </div>
 
@@ -361,17 +362,30 @@
             }
         }
     </style>
-<!-- Индикатор загрузки -->
-<div id="loadingOverlay" class="loading-overlay">
-    <div class="loading-spinner">
-        <div class="spinner"></div>
-        <div id="loadingText">Загрузка данных...</div>
+    <!-- Индикатор загрузки -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <div id="loadingText">Загрузка данных...</div>
+        </div>
     </div>
-</div>
 
-<script src="/static/js/api.js"></script>
-<script src="/static/js/charts.js"></script>
-<script src="/static/js/app.js"></script>
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/charts.js"></script>
+    <script src="/static/js/app.js"></script>
+
+    <script>
+        console.log('🔍 DEBUG: Checking DOM elements before app.js loads...');
+        const checkElements = ['employeesSelect', 'activityTypeSelect', 'startDate', 'endDate'];
+        checkElements.forEach(id => {
+            const el = document.getElementById(id);
+            console.log(`🔍 ${id}:`, el ? 'FOUND' : 'NOT FOUND', el);
+        });
+
+        // Проверим всю структуру
+        console.log('🔍 Full filters section:', document.querySelector('.filters-section'));
+        console.log('🔍 All inputs in filters:', document.querySelectorAll('.filters-section input, .filters-section select'));
+    </script>
 </body>
 
 </html>
