@@ -19,23 +19,6 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 function initializeEventListeners() {
-    const periodSelect = document.getElementById('periodSelect');
-    if (periodSelect) {
-        periodSelect.addEventListener('change', function () {
-            const customRange = document.getElementById('customDateRange');
-            if (this.value === 'custom') {
-                customRange.style.display = 'block';
-                const endDate = new Date();
-                const startDate = new Date();
-                startDate.setDate(startDate.getDate() - 30);
-
-                document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
-                document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
-            } else {
-                customRange.style.display = 'none';
-            }
-        });
-    }
 
     const modal = document.getElementById('authModal');
     const closeBtn = document.querySelector('.close');
@@ -49,6 +32,20 @@ function initializeEventListeners() {
             hideAuthModal();
         }
     });
+}
+
+const modal = document.getElementById('authModal');
+const closeBtn = document.querySelector('.close');
+
+if (closeBtn) {
+    closeBtn.addEventListener('click', hideAuthModal);
+}
+
+window.addEventListener('click', function (event) {
+    if (event.target === modal) {
+        hideAuthModal();
+    }
+});
 }
 
 function initAuth() {
@@ -345,25 +342,28 @@ async function applyFilters() {
 
         showLoading('resultsBody', 'Загрузка данных...');
 
-        const period = document.getElementById('periodSelect').value;
         const employeeFilter = document.getElementById('employeesSelect').value;
         const activityTypeFilter = document.getElementById('activityTypeSelect').value;
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+
+        // ВАЛИДАЦИЯ ДАТ
+        if (!startDate || !endDate) {
+            alert('❌ Пожалуйста, выберите диапазон дат');
+            return;
+        }
+
+        if (new Date(startDate) > new Date(endDate)) {
+            alert('❌ Дата начала не может быть больше даты окончания');
+            return;
+        }
 
         const filters = {
             user_ids: employeeFilter === 'all' ? [] : [employeeFilter],
-            activity_type: activityTypeFilter === 'all' ? null : activityTypeFilter
+            activity_type: activityTypeFilter === 'all' ? null : activityTypeFilter,
+            start_date: startDate,
+            end_date: endDate
         };
-
-        if (period === 'custom') {
-            const startDate = document.getElementById('startDate').value;
-            const endDate = document.getElementById('endDate').value;
-            if (startDate && endDate) {
-                filters.start_date = startDate;
-                filters.end_date = endDate;
-            }
-        } else {
-            filters.days = parseInt(period);
-        }
 
         const statsData = await BitrixAPI.getDetailedStats(filters);
         if (statsData) {
@@ -450,6 +450,7 @@ function showError(elementId, message) {
 }
 
 // Функция детализации
+// Функция детализации - ИСПРАВЛЕННАЯ ВЕРСИЯ
 window.showUserDetails = async function (userId) {
     console.log('🔍 Showing details for user:', userId);
 
@@ -471,7 +472,11 @@ window.showUserDetails = async function (userId) {
 
     try {
         // ЗАПРАШИВАЕМ АКТИВНОСТИ ОТДЕЛЬНО
-        const response = await fetch(`/api/user-activities/${userId}`);
+        const response = await fetch(`/api/user-activities/${userId}?${new URLSearchParams({
+            start_date: document.getElementById('startDate')?.value || '',
+            end_date: document.getElementById('endDate')?.value || ''
+        })}`);
+
         const data = await response.json();
 
         if (!data.success) {
@@ -479,9 +484,8 @@ window.showUserDetails = async function (userId) {
         }
 
         const activities = data.activities || [];
-
-        // ... остальной код обработки activities ...
         const activitiesByDay = {};
+
         if (activities && activities.length > 0) {
             activities.forEach(activity => {
                 try {
@@ -505,61 +509,57 @@ window.showUserDetails = async function (userId) {
             });
         }
 
-        // ... остальной код отображения ...
+        const sortedDays = Object.keys(activitiesByDay).sort().reverse();
+
+        let html = `
+            <div class="details-header">
+                <h3>📋 Детализация активностей: ${userStats.user_name}</h3>
+                <button class="quick-btn" onclick="document.getElementById('detailsPanel').classList.remove('active')">✕ Закрыть</button>
+            </div>
+            <div class="details-content">
+        `;
+
+        if (sortedDays.length === 0) {
+            html += `<div class="loading">Нет данных об активностях</div>`;
+        } else {
+            sortedDays.forEach(day => {
+                const activities = activitiesByDay[day];
+                const date = new Date(day);
+                const dayName = date.toLocaleDateString('ru-RU', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+
+                html += `
+                    <div class="day-group">
+                        <div class="day-header">📅 ${dayName} (${activities.length} активностей)</div>
+                `;
+
+                activities.forEach(activity => {
+                    html += `
+                        <div class="activity-item">
+                            <span class="activity-time">${activity.time}</span>
+                            <span class="activity-type ${activity.type_class}">${activity.type}</span>
+                            <span class="activity-description">${activity.description}</span>
+                        </div>
+                    `;
+                });
+
+                html += `</div>`;
+            });
+        }
+
+        html += `</div>`;
+        panel.innerHTML = html;
+
+        console.log('✅ Details panel updated for user:', userId);
 
     } catch (error) {
         console.error('❌ Error loading user details:', error);
         panel.innerHTML = `<div class="error">Ошибка загрузки деталей: ${error.message}</div>`;
     }
-};
-
-const sortedDays = Object.keys(activitiesByDay).sort().reverse();
-
-let html = `
-        <div class="details-header">
-            <h3>📋 Детализация активностей: ${userStats.user_name}</h3>
-            <button class="quick-btn" onclick="document.getElementById('detailsPanel').classList.remove('active')">✕ Закрыть</button>
-        </div>
-        <div class="details-content">
-    `;
-
-if (sortedDays.length === 0) {
-    html += `<div class="loading">Нет данных об активностях</div>`;
-} else {
-    sortedDays.forEach(day => {
-        const activities = activitiesByDay[day];
-        const date = new Date(day);
-        const dayName = date.toLocaleDateString('ru-RU', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-
-        html += `
-                <div class="day-group">
-                    <div class="day-header">📅 ${dayName} (${activities.length} активностей)</div>
-            `;
-
-        activities.forEach(activity => {
-            html += `
-                    <div class="activity-item">
-                        <span class="activity-time">${activity.time}</span>
-                        <span class="activity-type ${activity.type_class}">${activity.type}</span>
-                        <span class="activity-description">${activity.description}</span>
-                    </div>
-                `;
-        });
-
-        html += `</div>`;
-    });
-}
-
-html += `</div>`;
-panel.innerHTML = html;
-panel.classList.add('active');
-
-console.log('✅ Details panel updated for user:', userId);
 };
 
 // Глобальные функции

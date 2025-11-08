@@ -83,44 +83,37 @@ class BitrixService:
     async def get_activities(self, days: int = None, start_date: str = None, end_date: str = None, 
                         user_ids: List[str] = None, activity_types: List[str] = None) -> Optional[List[Dict]]:
         try:
-            # Создаем ключ для кэша
             cache_key = f"activities_{days}_{start_date}_{end_date}_{'-'.join(user_ids) if user_ids else 'all'}_{'-'.join(activity_types) if activity_types else 'all'}"
             
-            # Проверяем кэш - ВАЖНО: даже если кэш есть, но он пустой - перезапрашиваем
             if cache_key in self._cache:
                 cache_time, cached_data = self._cache[cache_key]
                 cache_age = (datetime.now() - cache_time).total_seconds()
-                # Используем кэш только если он не пустой И не устарел
                 if cached_data and cache_age < self._cache_ttl:
                     logger.info(f"Using cached activities: {len(cached_data)}")
                     return cached_data
                 elif not cached_data:
                     logger.info("Cache exists but empty - refetching")
             
-            # Если не указаны пользователи - используем ТОЛЬКО пресейлов
             if not user_ids:
                 presales_users = await self.get_presales_users()
                 if presales_users:
                     user_ids = [str(user['ID']) for user in presales_users]
                     print(f"🎯 Using presales users: {user_ids}")
             
-            # ОПРЕДЕЛЯЕМ ДАТЫ ПЕРИОДА - ИСПРАВЛЕНИЕ!
+            # ИСПРАВЛЕНИЕ ДИАПАЗОНА ДАТ - ВКЛЮЧАЕМ ВЕСЬ ДЕНЬ
             if start_date and end_date:
-                # Если переданы даты как строки (из формы)
                 start_date_obj = datetime.fromisoformat(start_date)
                 end_date_obj = datetime.fromisoformat(end_date)
-                # ДОБАВЛЯЕМ 23:59:59 к конечной дате чтобы охватить весь день
+                # УСТАНАВЛИВАЕМ ВРЕМЯ: начало дня - конец дня
+                start_date_obj = start_date_obj.replace(hour=0, minute=0, second=0)
                 end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
             elif days:
-                # Если передан период в днях
-                end_date_obj = datetime.now()
-                start_date_obj = end_date_obj - timedelta(days=days)
+                end_date_obj = datetime.now().replace(hour=23, minute=59, second=59)
+                start_date_obj = (end_date_obj - timedelta(days=days)).replace(hour=0, minute=0, second=0)
             else:
-                # По умолчанию 30 дней
-                end_date_obj = datetime.now()
-                start_date_obj = end_date_obj - timedelta(days=30)
+                end_date_obj = datetime.now().replace(hour=23, minute=59, second=59)
+                start_date_obj = (end_date_obj - timedelta(days=30)).replace(hour=0, minute=0, second=0)
             
-            # Форматируем даты для Bitrix API
             start_date_str = start_date_obj.strftime("%Y-%m-%dT%H:%M:%S")
             end_date_str = end_date_obj.strftime("%Y-%m-%dT%H:%M:%S")
             
@@ -128,10 +121,6 @@ class BitrixService:
             
             all_activities = []
             start = 0
-            
-            logger.info(f"Fetching activities from {start_date_str} to {end_date_str}")
-
-            # ОГРАНИЧИМ МАКСИМАЛЬНОЕ КОЛИЧЕСТВО ЗАПРОСОВ
             max_requests = 20
             request_count = 0
 
@@ -142,19 +131,15 @@ class BitrixService:
                     'start': start
                 }
                 
-                # Добавляем фильтр по пользователям если указаны
                 if user_ids:
                     params['filter[AUTHOR_ID]'] = user_ids
                 
-                # Добавляем фильтр по типам активностей если указаны
                 if activity_types:
                     params['filter[TYPE_ID]'] = activity_types
                 
-                # Дополнительные параметры
                 params['order[CREATED]'] = 'DESC'
                 params['select[]'] = ['ID', 'CREATED', 'AUTHOR_ID', 'DESCRIPTION', 'TYPE_ID', 'SUBJECT', 'PROVIDER_ID']
                 
-                # Делаем запрос к Bitrix24
                 activities = await self.make_bitrix_request("crm.activity.list", params)
                 
                 if activities is None:
@@ -168,21 +153,16 @@ class BitrixService:
                 all_activities.extend(activities)
                 print(f"📥 Received {len(activities)} activities, total: {len(all_activities)}")
                 
-                # Bitrix24 возвращает по 50 записей, если получили меньше - значит это конец
                 if len(activities) < 50:
                     break
                     
                 start += 50
                 request_count += 1
-                
-                # Небольшая задержка чтобы не перегружать API
                 await asyncio.sleep(0.1)
             
             print(f"✅ Total activities received: {len(all_activities)}")
             
-            # Сохраняем в кэш
             self._cache[cache_key] = (datetime.now(), all_activities)
-            
             return all_activities
         
         except Exception as e:
