@@ -1,3 +1,31 @@
+// ДЕБАГ-ХУК ДЛЯ ОТСЛЕЖИВАНИЯ ИСЧЕЗНОВЕНИЯ ЭЛЕМЕНТОВ
+const debugElements = ['employeesSelect', 'activityTypeSelect', 'startDate', 'endDate'];
+
+// Мониторим изменения DOM
+const observer = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+        if (mutation.type === 'childList') {
+            debugElements.forEach(id => {
+                const element = document.getElementById(id);
+                if (!element) {
+                    console.error(`🚨🚨🚨 ELEMENT ${id} WAS REMOVED FROM DOM!`, {
+                        mutation: mutation,
+                        stack: new Error().stack
+                    });
+                }
+            });
+        }
+    });
+});
+
+// Начинаем наблюдение
+observer.observe(document.body, {
+    childList: true,
+    subtree: true
+});
+
+console.log('🔍 DOM Observer started');
+
 // app.js - УЛЬТРА-ЗАЩИЩЕННАЯ ВЕРСИЯ
 const ACTIVITY_TYPES = {
     "1": { name: "Встреча", class: "badge-meeting" },
@@ -209,6 +237,17 @@ async function waitForCriticalElements() {
     console.error('🚨 Critical elements final status:', finalStatus);
     throw new Error(`Critical elements not loaded after 15s: ${JSON.stringify(finalStatus)}`);
 }
+
+console.log('🔍 RIGHT BEFORE ERROR - Element status:', {
+    employeesSelect: document.getElementById('employeesSelect'),
+    activityTypeSelect: document.getElementById('activityTypeSelect'), 
+    startDate: document.getElementById('startDate'),
+    endDate: document.getElementById('endDate')
+});
+
+// Строка 255 - здесь падает ошибка
+const employeeFilter = employeesSelect.value;
+
 
 function showLoginPrompt() {
     try {
