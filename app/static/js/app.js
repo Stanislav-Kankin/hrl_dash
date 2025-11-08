@@ -15,13 +15,14 @@ document.addEventListener('DOMContentLoaded', function () {
     console.log('🚀 DOM loaded, initializing...');
     initializeEventListeners();
     initAuth();
-    initializeDashboard();
+    
+    // Запускаем инициализацию с задержкой чтобы DOM точно загрузился
+    setTimeout(() => {
+        initializeDashboard();
+    }, 100);
 });
 
 function initializeEventListeners() {
-    // Устанавливаем даты по умолчанию
-    setDefaultDates();
-
     const modal = document.getElementById('authModal');
     const closeBtn = document.querySelector('.close');
 
@@ -37,27 +38,19 @@ function initializeEventListeners() {
 }
 
 function setDefaultDates() {
-    try {
-        const startDateEl = document.getElementById('startDate');
-        const endDateEl = document.getElementById('endDate');
-        
-        if (!startDateEl || !endDateEl) {
-            console.log('⏳ Date elements not ready yet, retrying...');
-            setTimeout(setDefaultDates, 100);
-            return;
-        }
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
+    const endDate = new Date();
 
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - 30);
-
-        const endDate = new Date();
-
+    const startDateEl = document.getElementById('startDate');
+    const endDateEl = document.getElementById('endDate');
+    
+    if (startDateEl && endDateEl) {
         startDateEl.value = startDate.toISOString().split('T')[0];
         endDateEl.value = endDate.toISOString().split('T')[0];
-        
         console.log('✅ Default dates set');
-    } catch (error) {
-        console.error('❌ Error setting default dates:', error);
+    } else {
+        console.log('⏳ Date inputs not ready yet');
     }
 }
 
@@ -115,8 +108,8 @@ async function initializeDashboard() {
     try {
         console.log('📊 Initializing dashboard...');
 
-        // Ждем загрузки DOM элементов
-        await ensureElementsLoaded();
+        // Сначала устанавливаем даты по умолчанию
+        setDefaultDates();
         
         ActivityCharts.initCharts();
         await loadUsersList();
@@ -128,43 +121,15 @@ async function initializeDashboard() {
             return;
         }
 
+        // Ждем немного чтобы все элементы точно загрузились
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
         await applyFilters();
 
     } catch (error) {
         console.error('❌ Dashboard init error:', error);
         showError('resultsBody', `Ошибка: ${error.message}`);
     }
-}
-
-// НОВАЯ ФУНКЦИЯ: Гарантируем что все элементы загружены
-async function ensureElementsLoaded() {
-    const requiredElements = [
-        'employeesSelect', 
-        'activityTypeSelect', 
-        'startDate', 
-        'endDate'
-    ];
-    
-    let attempts = 0;
-    const maxAttempts = 10;
-    
-    while (attempts < maxAttempts) {
-        const allFound = requiredElements.every(id => {
-            const element = document.getElementById(id);
-            return element !== null;
-        });
-        
-        if (allFound) {
-            console.log('✅ All required elements loaded');
-            return;
-        }
-        
-        attempts++;
-        console.log(`⏳ Waiting for elements... attempt ${attempts}/${maxAttempts}`);
-        await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    
-    throw new Error('Some required elements failed to load');
 }
 
 function showLoginPrompt() {
@@ -332,10 +297,27 @@ async function applyFilters() {
 
         showLoading('resultsBody', 'Загрузка данных...');
 
-        const employeeFilter = document.getElementById('employeesSelect').value;
-        const activityTypeFilter = document.getElementById('activityTypeSelect').value;
-        const startDate = document.getElementById('startDate').value;
-        const endDate = document.getElementById('endDate').value;
+        // ПРОВЕРЯЕМ ЧТО ЭЛЕМЕНТЫ СУЩЕСТВУЮТ
+        const employeesSelect = document.getElementById('employeesSelect');
+        const activityTypeSelect = document.getElementById('activityTypeSelect');
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+
+        if (!employeesSelect || !activityTypeSelect || !startDateInput || !endDateInput) {
+            console.error('❌ Some elements not found:', {
+                employeesSelect: !!employeesSelect,
+                activityTypeSelect: !!activityTypeSelect,
+                startDate: !!startDateInput,
+                endDate: !!endDateInput
+            });
+            showError('resultsBody', 'Ошибка загрузки интерфейса. Пожалуйста, обновите страницу.');
+            return;
+        }
+
+        const employeeFilter = employeesSelect.value;
+        const activityTypeFilter = activityTypeSelect.value;
+        const startDate = startDateInput.value;
+        const endDate = endDateInput.value;
 
         // ВАЛИДАЦИЯ ДАТ
         if (!startDate || !endDate) {
@@ -442,6 +424,11 @@ function displayUserStats(statsData) {
 
 function updateUserSelect() {
     const select = document.getElementById('employeesSelect');
+    if (!select) {
+        console.error('❌ employeesSelect not found');
+        return;
+    }
+    
     select.innerHTML = '<option value="all">Все сотрудники</option>';
 
     allUsers.forEach(user => {
