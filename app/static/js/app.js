@@ -2,8 +2,8 @@
 const debugElements = ['employeesSelect', 'activityTypeSelect', 'startDate', 'endDate'];
 
 // Мониторим изменения DOM
-const observer = new MutationObserver(function(mutations) {
-    mutations.forEach(function(mutation) {
+const observer = new MutationObserver(function (mutations) {
+    mutations.forEach(function (mutation) {
         if (mutation.type === 'childList') {
             debugElements.forEach(id => {
                 const element = document.getElementById(id);
@@ -179,7 +179,7 @@ async function initializeDashboard() {
     try {
         console.log('📊 Initializing dashboard...');
 
-        // Ждем загрузки ВСЕХ критических элементов
+        // Ждем загрузки всех необходимых элементов
         await waitForCriticalElements();
 
         // Инициализируем графики
@@ -197,50 +197,35 @@ async function initializeDashboard() {
 
     } catch (error) {
         console.error('❌ Dashboard initialization error:', error);
-        showError('resultsBody', `Ошибка загрузки дашборда: ${error.message}`);
+        showError('resultsBody', `Ошибка инициализации: ${error.message}`);
     }
 }
 
 async function waitForCriticalElements() {
     const criticalElements = ['employeesSelect', 'activityTypeSelect', 'startDate', 'endDate', 'resultsBody'];
     const startTime = Date.now();
-    const maxWaitTime = 15000; // 15 секунд максимум
-
-    console.log('🔍 Waiting for critical elements...');
+    const maxWaitTime = 10000; // 10 секунд максимум
 
     while (Date.now() - startTime < maxWaitTime) {
-        const elementsStatus = {};
-        let allLoaded = true;
-
-        for (const id of criticalElements) {
+        const allLoaded = criticalElements.every(id => {
             const element = document.getElementById(id);
-            elementsStatus[id] = !!element;
-            if (!element) {
-                allLoaded = false;
-            }
-        }
+            return element !== null;
+        });
 
         if (allLoaded) {
-            console.log('✅ All critical elements loaded:', elementsStatus);
+            console.log('✅ All critical elements loaded');
             return;
         }
 
-        console.log('⏳ Elements status:', elementsStatus);
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    const finalStatus = {};
-    for (const id of criticalElements) {
-        finalStatus[id] = !!document.getElementById(id);
-    }
-
-    console.error('🚨 Critical elements final status:', finalStatus);
-    throw new Error(`Critical elements not loaded after 15s: ${JSON.stringify(finalStatus)}`);
+    throw new Error(`Critical elements not loaded after ${maxWaitTime}ms`);
 }
 
 console.log('🔍 RIGHT BEFORE ERROR - Element status:', {
     employeesSelect: document.getElementById('employeesSelect'),
-    activityTypeSelect: document.getElementById('activityTypeSelect'), 
+    activityTypeSelect: document.getElementById('activityTypeSelect'),
     startDate: document.getElementById('startDate'),
     endDate: document.getElementById('endDate')
 });
@@ -273,76 +258,55 @@ function showLoginPrompt() {
 // ОСНОВНЫЕ ФУНКЦИИ ДАННЫХ
 async function loadUsersList() {
     try {
-        showLoading('resultsBody', 'Загрузка списка сотрудников...');
+        showLoading('resultsBody', 'Загрузка сотрудников...');
         const data = await BitrixAPI.getUsersList();
 
-        if (data && data.users) {
+        if (data.users) {
             allUsers = data.users;
             updateUserSelect();
-            console.log(`✅ Loaded ${allUsers.length} users`);
-        } else {
-            console.warn('⚠️ No users data received');
-            allUsers = [];
         }
     } catch (error) {
-        console.error('❌ Error loading users list:', error);
-        showError('resultsBody', `Ошибка загрузки сотрудников: ${error.message}`);
+        console.error('Ошибка загрузки сотрудников:', error);
+        showError('resultsBody', `Ошибка: ${error.message}`);
     }
 }
 
 // ПЕРЕПИСАННАЯ applyFilters С МАКСИМАЛЬНОЙ ЗАЩИТОЙ
-async function applyFilters() {
-    console.log('🔄 applyFilters called - ULTRA SAFE VERSION');
 
+async function applyFilters() {
     try {
-        // Проверка авторизации
+        console.log('🔄 applyFilters called...');
+
         if (!BitrixAPI.authToken || !currentUser) {
-            console.log('🔐 No auth, showing login prompt');
             showLoginPrompt();
             return;
         }
 
-        // Показываем загрузку
         showLoading('resultsBody', 'Загрузка данных...');
 
-        // ПРОВЕРЯЕМ КАЖДЫЙ ЭЛЕМЕНТ ПЕРЕД ИСПОЛЬЗОВАНИЕМ
-        const requiredElements = [
-            'employeesSelect',
-            'activityTypeSelect',
-            'startDate',
-            'endDate'
-        ];
+        // 🔴 ИСПРАВЛЕНИЕ: ОБЪЯВЛЯЕМ ПЕРЕМЕННЫЕ
+        const employeesSelect = document.getElementById('employeesSelect');
+        const activityTypeSelect = document.getElementById('activityTypeSelect');
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
 
-        const elements = {};
-        let allElementsValid = true;
-
-        for (const id of requiredElements) {
-            try {
-                elements[id] = getElementSafely(id);
-                console.log(`✅ ${id}:`, elements[id].value);
-            } catch (error) {
-                console.error(`❌ ${id} error:`, error);
-                allElementsValid = false;
-                break;
-            }
-        }
-
-        if (!allElementsValid) {
-            throw new Error('One or more form elements are missing');
-        }
-
-        // ПОЛУЧАЕМ ЗНАЧЕНИЯ С ЗАЩИТОЙ
-        const employeeFilter = elements.employeesSelect.value;
-        const activityTypeFilter = elements.activityTypeSelect.value;
-        const startDate = elements.startDate.value;
-        const endDate = elements.endDate.value;
-
-        console.log('📋 Filter values:', {
-            employeeFilter,
-            activityTypeFilter,
-            startDate,
-            endDate
+        console.log('🔍 Element status in applyFilters:', {
+            employeesSelect: !!employeesSelect,
+            activityTypeSelect: !!activityTypeSelect,
+            startDateInput: !!startDateInput,
+            endDateInput: !!endDateInput
         });
+
+        // Проверяем что все элементы существуют
+        if (!employeesSelect || !activityTypeSelect || !startDateInput || !endDateInput) {
+            throw new Error('Form elements not found');
+        }
+
+        // Получаем значения фильтров
+        const employeeFilter = employeesSelect.value;
+        const activityTypeFilter = activityTypeSelect.value;
+        const startDate = startDateInput.value;
+        const endDate = endDateInput.value;
 
         // Валидация дат
         if (!startDate || !endDate) {
@@ -358,38 +322,16 @@ async function applyFilters() {
             end_date: endDate
         };
 
-        console.log('🔍 Sending filters to API:', filters);
-
-        // Загружаем данные
+        console.log('🔍 Sending filters:', filters);
         const statsData = await BitrixAPI.getDetailedStats(filters);
 
         if (statsData) {
-            console.log('📊 Received stats data:', statsData);
             displayUserStats(statsData);
-        } else {
-            throw new Error('No data received from server');
         }
 
     } catch (error) {
-        console.error('❌ Error in applyFilters:', error);
-
-        if (error.message.includes('not found') || error.message.includes('missing')) {
-            // Если элементы DOM пропали - показываем ошибку и предлагаем обновить
-            showError('resultsBody', `
-                Ошибка загрузки элементов интерфейса. 
-                Это может быть временной проблемой.
-                <br><br>
-                <button class="apply-btn" onclick="location.reload()">
-                    Обновить страницу
-                </button>
-                <br><br>
-                <button class="quick-btn" onclick="retryApplyFilters()">
-                    Попробовать снова
-                </button>
-            `);
-        } else {
-            showError('resultsBody', `Ошибка: ${error.message}`);
-        }
+        console.error('Error applying filters:', error);
+        showError('resultsBody', `Ошибка: ${error.message}`);
     }
 }
 
@@ -400,93 +342,64 @@ window.retryApplyFilters = function () {
 };
 
 function displayUserStats(statsData) {
-    console.log('📊 Displaying user stats...');
+    console.log('📊 Displaying user stats:', statsData);
 
     if (!statsData || !statsData.user_stats) {
         showError('resultsBody', 'Нет данных для отображения');
         return;
     }
 
-    try {
-        // Показываем секции
-        const summaryCards = document.querySelector('.summary-cards');
-        const chartsSection = document.querySelector('.charts-section');
-        if (summaryCards) summaryCards.style.display = 'grid';
-        if (chartsSection) chartsSection.style.display = 'block';
+    const summaryCards = document.querySelector('.summary-cards');
+    const chartsSection = document.querySelector('.charts-section');
 
-        // Сортируем пользователей по активности
-        const sortedUserStats = [...statsData.user_stats].sort((a, b) => (b.total || 0) - (a.total || 0));
-        const tbody = getElementSafely('resultsBody');
+    if (summaryCards) summaryCards.style.display = 'grid';
+    if (chartsSection) chartsSection.style.display = 'block';
 
-        if (sortedUserStats.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="loading">Нет данных за выбранный период</td></tr>';
-            return;
-        }
+    const sortedUserStats = [...statsData.user_stats].sort((a, b) => (b.total || 0) - (a.total || 0));
+    const tbody = document.getElementById('resultsBody');
 
-        // Очищаем и заполняем таблицу
-        tbody.innerHTML = '';
-        currentUserStats = {};
-
-        sortedUserStats.forEach(user => {
-            currentUserStats[user.user_id] = user;
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td class="employee-name">${escapeHtml(user.user_name)}</td>
-                <td>${user.days_count || 0}</td>
-                <td><span class="activity-badge badge-call">${user.calls || 0}</span></td>
-                <td><span class="activity-badge badge-comment">${user.comments || 0}</span></td>
-                <td><span class="activity-badge badge-task">${user.tasks || 0}</span></td>
-                <td><span class="activity-badge badge-meeting">${user.meetings || 0}</span></td>
-                <td><strong>${user.total || 0}</strong></td>
-                <td>${user.last_activity_date || 'Нет данных'}</td>
-                <td>
-                    <button class="quick-btn" onclick="showUserDetails('${user.user_id}')">
-                        Детали
-                    </button>
-                </td>
-            `;
-            tbody.appendChild(row);
-        });
-
-        // Обновляем графики если есть статистика
-        if (statsData.statistics) {
-            ActivityCharts.updateAllCharts(statsData.statistics);
-        }
-
-        console.log(`✅ Displayed ${sortedUserStats.length} users`);
-
-    } catch (error) {
-        console.error('❌ Error displaying user stats:', error);
-        showError('resultsBody', `Ошибка отображения данных: ${error.message}`);
+    if (sortedUserStats.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Нет данных за выбранный период</td></tr>';
+        return;
     }
+
+    tbody.innerHTML = '';
+    currentUserStats = {};
+
+    sortedUserStats.forEach(user => {
+        currentUserStats[user.user_id] = user;
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td class="employee-name">${user.user_name}</td>
+            <td>${user.days_count || 0}</td>
+            <td><span class="activity-badge badge-call">${user.calls || 0}</span></td>
+            <td><span class="activity-badge badge-comment">${user.comments || 0}</span></td>
+            <td><span class="activity-badge badge-task">${user.tasks || 0}</span></td>
+            <td><span class="activity-badge badge-meeting">${user.meetings || 0}</span></td>
+            <td><strong>${user.total || 0}</strong></td>
+            <td>${user.last_activity_date || 'Нет данных'}</td>
+            <td><button class="quick-btn" onclick="showUserDetails('${user.user_id}')">Детали</button></td>
+        `;
+        tbody.appendChild(row);
+    });
+
+    console.log('✅ User stats displayed successfully');
 }
 
 function updateUserSelect() {
-    try {
-        const select = getElementSafely('employeesSelect');
-
-        // Сохраняем текущее выбранное значение
-        const currentValue = select.value;
-
-        // Очищаем и заполняем select
-        select.innerHTML = '<option value="all">Все сотрудники</option>';
-
-        allUsers.forEach(user => {
-            const option = document.createElement('option');
-            option.value = user.ID;
-            option.textContent = `${user.NAME} ${user.LAST_NAME}${user.WORK_POSITION ? ` (${user.WORK_POSITION})` : ''}`;
-            select.appendChild(option);
-        });
-
-        // Восстанавливаем выбранное значение если возможно
-        if (currentValue && allUsers.some(user => user.ID === currentValue)) {
-            select.value = currentValue;
-        }
-
-        console.log(`✅ Updated user select with ${allUsers.length} options`);
-    } catch (error) {
-        console.error('❌ Error updating user select:', error);
+    const select = document.getElementById('employeesSelect');
+    if (!select) {
+        console.error('❌ employeesSelect not found in updateUserSelect');
+        return;
     }
+
+    select.innerHTML = '<option value="all">Все сотрудники</option>';
+    allUsers.forEach(user => {
+        const option = document.createElement('option');
+        option.value = user.ID;
+        option.textContent = `${user.NAME} ${user.LAST_NAME}${user.WORK_POSITION ? ` (${user.WORK_POSITION})` : ''}`;
+        select.appendChild(option);
+    });
 }
 
 console.log('🔄 ULTRA-SAFE app.js loaded successfully');
@@ -616,7 +529,7 @@ function logout() {
 }
 
 // ФУНКЦИЯ ДЕТАЛИЗАЦИИ
-window.showUserDetails = async function (userId) {
+window.showUserDetails = async function(userId) {
     console.log('🔍 Showing details for user:', userId);
 
     const userStats = currentUserStats[userId];
@@ -635,11 +548,19 @@ window.showUserDetails = async function (userId) {
     panel.classList.add('active');
 
     try {
-        const response = await fetch(`/api/user-activities/${userId}?${new URLSearchParams({
-            start_date: document.getElementById('startDate').value,
-            end_date: document.getElementById('endDate').value
-        })}`);
+        // 🔴 ИСПРАВЛЕНИЕ: ОБЪЯВЛЯЕМ ПЕРЕМЕННЫЕ
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        if (!startDateInput || !endDateInput) {
+            throw new Error('Date elements not found');
+        }
 
+        const response = await fetch(`/api/user-activities/${userId}?${new URLSearchParams({
+            start_date: startDateInput.value,
+            end_date: endDateInput.value
+        })}`);
+        
         const data = await response.json();
 
         if (!data.success) {
@@ -648,38 +569,36 @@ window.showUserDetails = async function (userId) {
 
         const activities = data.activities || [];
         const activitiesByDay = {};
+        
+        if (activities && activities.length > 0) {
+            activities.forEach(activity => {
+                try {
+                    const activityDate = new Date(activity.CREATED.replace('Z', '+00:00'));
+                    const dateKey = activityDate.toISOString().split('T')[0];
 
-        // Группируем активности по дням
-        activities.forEach(activity => {
-            try {
-                const activityDate = new Date(activity.CREATED.replace('Z', '+00:00'));
-                const dateKey = activityDate.toISOString().split('T')[0];
+                    if (!activitiesByDay[dateKey]) {
+                        activitiesByDay[dateKey] = [];
+                    }
 
-                if (!activitiesByDay[dateKey]) {
-                    activitiesByDay[dateKey] = [];
+                    activitiesByDay[dateKey].push({
+                        time: activityDate.toLocaleTimeString('ru-RU'),
+                        type: ACTIVITY_TYPES[activity.TYPE_ID]?.name || 'Другое',
+                        type_class: ACTIVITY_TYPES[activity.TYPE_ID]?.class || 'badge-task',
+                        description: activity.DESCRIPTION || activity.SUBJECT || 'Без описания',
+                        type_id: activity.TYPE_ID
+                    });
+                } catch (e) {
+                    console.error('Error processing activity:', activity, e);
                 }
+            });
+        }
 
-                activitiesByDay[dateKey].push({
-                    time: activityDate.toLocaleTimeString('ru-RU'),
-                    type: ACTIVITY_TYPES[activity.TYPE_ID]?.name || 'Другое',
-                    type_class: ACTIVITY_TYPES[activity.TYPE_ID]?.class || 'badge-task',
-                    description: activity.DESCRIPTION || activity.SUBJECT || 'Без описания',
-                    type_id: activity.TYPE_ID
-                });
-            } catch (e) {
-                console.error('Error processing activity:', activity, e);
-            }
-        });
-
-        // Сортируем дни по убыванию
         const sortedDays = Object.keys(activitiesByDay).sort().reverse();
 
         let html = `
             <div class="details-header">
-                <h3>📋 Детализация активностей: ${escapeHtml(userStats.user_name)}</h3>
-                <button class="quick-btn" onclick="document.getElementById('detailsPanel').classList.remove('active')">
-                    ✕ Закрыть
-                </button>
+                <h3>📋 Детализация активностей: ${userStats.user_name}</h3>
+                <button class="quick-btn" onclick="document.getElementById('detailsPanel').classList.remove('active')">✕ Закрыть</button>
             </div>
             <div class="details-content">
         `;
@@ -692,7 +611,7 @@ window.showUserDetails = async function (userId) {
                 const date = new Date(day);
                 const dayName = date.toLocaleDateString('ru-RU', {
                     weekday: 'long',
-                    year: 'numeric',
+                    year: 'numeric', 
                     month: 'long',
                     day: 'numeric'
                 });
@@ -707,7 +626,7 @@ window.showUserDetails = async function (userId) {
                         <div class="activity-item">
                             <span class="activity-time">${activity.time}</span>
                             <span class="activity-type ${activity.type_class}">${activity.type}</span>
-                            <span class="activity-description">${escapeHtml(activity.description)}</span>
+                            <span class="activity-description">${activity.description}</span>
                         </div>
                     `;
                 });
