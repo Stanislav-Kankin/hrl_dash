@@ -223,11 +223,6 @@ async function waitForCriticalElements() {
     throw new Error(`Critical elements not loaded after ${maxWaitTime}ms`);
 }
 
-
-// Строка 255 - здесь падает ошибка
-const employeeFilter = employeesSelect.value;
-
-
 function showLoginPrompt() {
     try {
         const tbody = document.getElementById('resultsBody');
@@ -297,7 +292,6 @@ async function applyFilters() {
         }
 
         // Получаем значения фильтров
-        const employeeFilter = employeesSelect.value;
         const activityTypeFilter = activityTypeSelect.value;
         const startDate = startDateInput.value;
         const endDate = endDateInput.value;
