@@ -1,4 +1,4 @@
-// app.js - ПОЛНОСТЬЮ ПЕРЕРАБОТАННАЯ ВЕРСИЯ
+// app.js - УЛЬТРА-ЗАЩИЩЕННАЯ ВЕРСИЯ
 const ACTIVITY_TYPES = {
     "1": { name: "Встреча", class: "badge-meeting" },
     "2": { name: "Звонок", class: "badge-call" },
@@ -9,29 +9,47 @@ const ACTIVITY_TYPES = {
 let allUsers = [];
 let currentUserStats = {};
 let currentUser = null;
-let isInitialized = false;
+
+// СУПЕР-БЕЗОПАСНАЯ ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ЭЛЕМЕНТОВ
+function getElementSafely(id) {
+    const element = document.getElementById(id);
+    if (!element) {
+        console.error(`🚨 CRITICAL: Element ${id} is NULL`);
+        throw new Error(`Element ${id} not found in DOM`);
+    }
+    return element;
+}
+
+function getElementValueSafely(id, defaultValue = '') {
+    try {
+        const element = getElementSafely(id);
+        return element.value || defaultValue;
+    } catch (error) {
+        console.error(`🚨 Failed to get value from ${id}:`, error);
+        return defaultValue;
+    }
+}
 
 // Инициализация при загрузке
 document.addEventListener('DOMContentLoaded', function () {
-    console.log('🚀 DOM loaded, starting initialization...');
+    console.log('🚀 DOM loaded, starting ULTRA-SAFE initialization...');
     initializeApp();
 });
 
 async function initializeApp() {
     try {
-        // Шаг 1: Инициализация базовых слушателей
+        console.log('🔧 Step 1: Basic setup');
         initializeEventListeners();
 
-        // Шаг 2: Настройка дат по умолчанию
+        console.log('🔧 Step 2: Setting dates');
         await setDefaultDatesWithRetry();
 
-        // Шаг 3: Проверка авторизации
+        console.log('🔧 Step 3: Authentication');
         await initAuth();
 
-        // Шаг 4: Основная инициализация дашборда
+        console.log('🔧 Step 4: Dashboard');
         await initializeDashboard();
 
-        isInitialized = true;
         console.log('✅ App fully initialized');
 
     } catch (error) {
@@ -43,41 +61,51 @@ async function initializeApp() {
 function initializeEventListeners() {
     console.log('🔧 Setting up event listeners...');
 
-    const modal = document.getElementById('authModal');
-    const closeBtn = document.querySelector('.close');
-
-    if (closeBtn) {
-        closeBtn.addEventListener('click', hideAuthModal);
-    }
-
-    window.addEventListener('click', function (event) {
-        if (event.target === modal) {
-            hideAuthModal();
+    // Простые слушатели - не критично если не сработают
+    try {
+        const closeBtn = document.querySelector('.close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', hideAuthModal);
         }
-    });
+
+        const modal = document.getElementById('authModal');
+        if (modal) {
+            window.addEventListener('click', function (event) {
+                if (event.target === modal) {
+                    hideAuthModal();
+                }
+            });
+        }
+    } catch (error) {
+        console.warn('⚠️ Event listeners setup warning:', error);
+    }
 }
 
-async function setDefaultDatesWithRetry(maxAttempts = 10) {
+async function setDefaultDatesWithRetry(maxAttempts = 15) {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        const startDateEl = document.getElementById('startDate');
-        const endDateEl = document.getElementById('endDate');
+        try {
+            const startDateEl = document.getElementById('startDate');
+            const endDateEl = document.getElementById('endDate');
 
-        if (startDateEl && endDateEl) {
-            const startDate = new Date();
-            startDate.setDate(startDate.getDate() - 30);
-            const endDate = new Date();
+            if (startDateEl && endDateEl) {
+                const startDate = new Date();
+                startDate.setDate(startDate.getDate() - 30);
+                const endDate = new Date();
 
-            startDateEl.value = startDate.toISOString().split('T')[0];
-            endDateEl.value = endDate.toISOString().split('T')[0];
-            console.log('✅ Default dates set');
-            return;
+                startDateEl.value = startDate.toISOString().split('T')[0];
+                endDateEl.value = endDate.toISOString().split('T')[0];
+                console.log('✅ Default dates set');
+                return;
+            }
+        } catch (error) {
+            console.warn(`⚠️ Date setting attempt ${attempt} failed:`, error);
         }
 
         console.log(`⏳ Waiting for date elements... attempt ${attempt}/${maxAttempts}`);
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 300));
     }
 
-    throw new Error('Failed to set default dates: date elements not found');
+    console.warn('⚠️ Could not set default dates, continuing anyway...');
 }
 
 async function initAuth() {
@@ -100,10 +128,14 @@ async function checkAuthStatus() {
         console.log('✅ User authenticated:', currentUser.email);
 
         // Обновляем кнопку авторизации
-        const authButton = document.getElementById('authButton');
-        if (authButton) {
-            authButton.textContent = `👤 ${currentUser.full_name} (Выйти)`;
-            authButton.onclick = logout;
+        try {
+            const authButton = document.getElementById('authButton');
+            if (authButton) {
+                authButton.textContent = `👤 ${currentUser.full_name} (Выйти)`;
+                authButton.onclick = logout;
+            }
+        } catch (error) {
+            console.warn('⚠️ Could not update auth button:', error);
         }
 
         return true;
@@ -119,7 +151,7 @@ async function initializeDashboard() {
     try {
         console.log('📊 Initializing dashboard...');
 
-        // Ждем загрузки всех необходимых элементов
+        // Ждем загрузки ВСЕХ критических элементов
         await waitForCriticalElements();
 
         // Инициализируем графики
@@ -137,46 +169,65 @@ async function initializeDashboard() {
 
     } catch (error) {
         console.error('❌ Dashboard initialization error:', error);
-        throw error;
+        showError('resultsBody', `Ошибка загрузки дашборда: ${error.message}`);
     }
 }
 
 async function waitForCriticalElements() {
     const criticalElements = ['employeesSelect', 'activityTypeSelect', 'startDate', 'endDate', 'resultsBody'];
     const startTime = Date.now();
-    const maxWaitTime = 10000; // 10 секунд максимум
+    const maxWaitTime = 15000; // 15 секунд максимум
+
+    console.log('🔍 Waiting for critical elements...');
 
     while (Date.now() - startTime < maxWaitTime) {
-        const allLoaded = criticalElements.every(id => {
+        const elementsStatus = {};
+        let allLoaded = true;
+
+        for (const id of criticalElements) {
             const element = document.getElementById(id);
-            return element !== null;
-        });
+            elementsStatus[id] = !!element;
+            if (!element) {
+                allLoaded = false;
+            }
+        }
 
         if (allLoaded) {
-            console.log('✅ All critical elements loaded');
+            console.log('✅ All critical elements loaded:', elementsStatus);
             return;
         }
 
-        await new Promise(resolve => setTimeout(resolve, 100));
+        console.log('⏳ Elements status:', elementsStatus);
+        await new Promise(resolve => setTimeout(resolve, 200));
     }
 
-    throw new Error(`Critical elements not loaded after ${maxWaitTime}ms`);
+    const finalStatus = {};
+    for (const id of criticalElements) {
+        finalStatus[id] = !!document.getElementById(id);
+    }
+
+    console.error('🚨 Critical elements final status:', finalStatus);
+    throw new Error(`Critical elements not loaded after 15s: ${JSON.stringify(finalStatus)}`);
 }
 
 function showLoginPrompt() {
-    const tbody = document.getElementById('resultsBody');
-    if (tbody) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="8" style="text-align: center; padding: 40px; color: #666;">
-                    <h3>🔐 Требуется авторизация</h3>
-                    <p>Для просмотра данных необходимо войти в систему</p>
-                    <button class="apply-btn" onclick="showAuthModal()" style="margin-top: 15px;">
-                        Войти в систему
-                    </button>
-                </td>
-            </tr>
-        `;
+    try {
+        const tbody = document.getElementById('resultsBody');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" style="text-align: center; padding: 40px; color: #666;">
+                        <h3>🔐 Требуется авторизация</h3>
+                        <p>Для просмотра данных необходимо войти в систему</p>
+                        <button class="apply-btn" onclick="showAuthModal()" style="margin-top: 15px;">
+                            Войти в систему
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }
+    } catch (error) {
+        console.error('❌ Error showing login prompt:', error);
     }
 }
 
@@ -200,36 +251,59 @@ async function loadUsersList() {
     }
 }
 
+// ПЕРЕПИСАННАЯ applyFilters С МАКСИМАЛЬНОЙ ЗАЩИТОЙ
 async function applyFilters() {
-    try {
-        console.log('🔄 Applying filters...');
+    console.log('🔄 applyFilters called - ULTRA SAFE VERSION');
 
+    try {
+        // Проверка авторизации
         if (!BitrixAPI.authToken || !currentUser) {
+            console.log('🔐 No auth, showing login prompt');
             showLoginPrompt();
             return;
         }
 
+        // Показываем загрузку
         showLoading('resultsBody', 'Загрузка данных...');
 
-        // БЕЗОПАСНОЕ ПОЛУЧЕНИЕ ЭЛЕМЕНТОВ С ПРОВЕРКОЙ
-        const getElement = (id) => {
-            const element = document.getElementById(id);
-            if (!element) {
-                throw new Error(`Element ${id} not found`);
+        // ПРОВЕРЯЕМ КАЖДЫЙ ЭЛЕМЕНТ ПЕРЕД ИСПОЛЬЗОВАНИЕМ
+        const requiredElements = [
+            'employeesSelect',
+            'activityTypeSelect',
+            'startDate',
+            'endDate'
+        ];
+
+        const elements = {};
+        let allElementsValid = true;
+
+        for (const id of requiredElements) {
+            try {
+                elements[id] = getElementSafely(id);
+                console.log(`✅ ${id}:`, elements[id].value);
+            } catch (error) {
+                console.error(`❌ ${id} error:`, error);
+                allElementsValid = false;
+                break;
             }
-            return element;
-        };
+        }
 
-        const getElementValue = (id) => {
-            const element = getElement(id);
-            return element.value;
-        };
+        if (!allElementsValid) {
+            throw new Error('One or more form elements are missing');
+        }
 
-        // Получаем значения фильтров
-        const employeeFilter = getElementValue('employeesSelect');
-        const activityTypeFilter = getElementValue('activityTypeSelect');
-        const startDate = getElementValue('startDate');
-        const endDate = getElementValue('endDate');
+        // ПОЛУЧАЕМ ЗНАЧЕНИЯ С ЗАЩИТОЙ
+        const employeeFilter = elements.employeesSelect.value;
+        const activityTypeFilter = elements.activityTypeSelect.value;
+        const startDate = elements.startDate.value;
+        const endDate = elements.endDate.value;
+
+        console.log('📋 Filter values:', {
+            employeeFilter,
+            activityTypeFilter,
+            startDate,
+            endDate
+        });
 
         // Валидация дат
         if (!startDate || !endDate) {
@@ -245,113 +319,138 @@ async function applyFilters() {
             end_date: endDate
         };
 
-        console.log('🔍 Sending filters:', filters);
+        console.log('🔍 Sending filters to API:', filters);
 
         // Загружаем данные
         const statsData = await BitrixAPI.getDetailedStats(filters);
 
         if (statsData) {
+            console.log('📊 Received stats data:', statsData);
             displayUserStats(statsData);
         } else {
             throw new Error('No data received from server');
         }
 
     } catch (error) {
-        console.error('❌ Error applying filters:', error);
+        console.error('❌ Error in applyFilters:', error);
 
-        if (error.message.includes('not found')) {
-            // Если элементы DOM не найдены, переинициализируем
-            console.log('🔄 DOM elements missing, reinitializing...');
-            setTimeout(initializeDashboard, 1000);
+        if (error.message.includes('not found') || error.message.includes('missing')) {
+            // Если элементы DOM пропали - показываем ошибку и предлагаем обновить
+            showError('resultsBody', `
+                Ошибка загрузки элементов интерфейса. 
+                Это может быть временной проблемой.
+                <br><br>
+                <button class="apply-btn" onclick="location.reload()">
+                    Обновить страницу
+                </button>
+                <br><br>
+                <button class="quick-btn" onclick="retryApplyFilters()">
+                    Попробовать снова
+                </button>
+            `);
         } else {
             showError('resultsBody', `Ошибка: ${error.message}`);
         }
     }
 }
 
+// Функция для повторной попытки
+window.retryApplyFilters = function () {
+    console.log('🔄 Retrying applyFilters...');
+    applyFilters();
+};
+
 function displayUserStats(statsData) {
-    console.log('📊 Displaying user stats:', statsData);
+    console.log('📊 Displaying user stats...');
 
     if (!statsData || !statsData.user_stats) {
         showError('resultsBody', 'Нет данных для отображения');
         return;
     }
 
-    // Показываем секции
-    const summaryCards = document.querySelector('.summary-cards');
-    const chartsSection = document.querySelector('.charts-section');
-    if (summaryCards) summaryCards.style.display = 'grid';
-    if (chartsSection) chartsSection.style.display = 'block';
+    try {
+        // Показываем секции
+        const summaryCards = document.querySelector('.summary-cards');
+        const chartsSection = document.querySelector('.charts-section');
+        if (summaryCards) summaryCards.style.display = 'grid';
+        if (chartsSection) chartsSection.style.display = 'block';
 
-    // Сортируем пользователей по активности
-    const sortedUserStats = [...statsData.user_stats].sort((a, b) => (b.total || 0) - (a.total || 0));
-    const tbody = document.getElementById('resultsBody');
+        // Сортируем пользователей по активности
+        const sortedUserStats = [...statsData.user_stats].sort((a, b) => (b.total || 0) - (a.total || 0));
+        const tbody = getElementSafely('resultsBody');
 
-    if (sortedUserStats.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="loading">Нет данных за выбранный период</td></tr>';
-        return;
+        if (sortedUserStats.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="loading">Нет данных за выбранный период</td></tr>';
+            return;
+        }
+
+        // Очищаем и заполняем таблицу
+        tbody.innerHTML = '';
+        currentUserStats = {};
+
+        sortedUserStats.forEach(user => {
+            currentUserStats[user.user_id] = user;
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td class="employee-name">${escapeHtml(user.user_name)}</td>
+                <td>${user.days_count || 0}</td>
+                <td><span class="activity-badge badge-call">${user.calls || 0}</span></td>
+                <td><span class="activity-badge badge-comment">${user.comments || 0}</span></td>
+                <td><span class="activity-badge badge-task">${user.tasks || 0}</span></td>
+                <td><span class="activity-badge badge-meeting">${user.meetings || 0}</span></td>
+                <td><strong>${user.total || 0}</strong></td>
+                <td>${user.last_activity_date || 'Нет данных'}</td>
+                <td>
+                    <button class="quick-btn" onclick="showUserDetails('${user.user_id}')">
+                        Детали
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+
+        // Обновляем графики если есть статистика
+        if (statsData.statistics) {
+            ActivityCharts.updateAllCharts(statsData.statistics);
+        }
+
+        console.log(`✅ Displayed ${sortedUserStats.length} users`);
+
+    } catch (error) {
+        console.error('❌ Error displaying user stats:', error);
+        showError('resultsBody', `Ошибка отображения данных: ${error.message}`);
     }
-
-    // Очищаем и заполняем таблицу
-    tbody.innerHTML = '';
-    currentUserStats = {};
-
-    sortedUserStats.forEach(user => {
-        currentUserStats[user.user_id] = user;
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td class="employee-name">${escapeHtml(user.user_name)}</td>
-            <td>${user.days_count || 0}</td>
-            <td><span class="activity-badge badge-call">${user.calls || 0}</span></td>
-            <td><span class="activity-badge badge-comment">${user.comments || 0}</span></td>
-            <td><span class="activity-badge badge-task">${user.tasks || 0}</span></td>
-            <td><span class="activity-badge badge-meeting">${user.meetings || 0}</span></td>
-            <td><strong>${user.total || 0}</strong></td>
-            <td>${user.last_activity_date || 'Нет данных'}</td>
-            <td>
-                <button class="quick-btn" onclick="showUserDetails('${user.user_id}')">
-                    Детали
-                </button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-
-    // Обновляем графики если есть статистика
-    if (statsData.statistics) {
-        ActivityCharts.updateAllCharts(statsData.statistics);
-    }
-
-    console.log(`✅ Displayed ${sortedUserStats.length} users`);
 }
 
 function updateUserSelect() {
-    const select = document.getElementById('employeesSelect');
-    if (!select) {
-        console.error('❌ employeesSelect not found');
-        return;
+    try {
+        const select = getElementSafely('employeesSelect');
+
+        // Сохраняем текущее выбранное значение
+        const currentValue = select.value;
+
+        // Очищаем и заполняем select
+        select.innerHTML = '<option value="all">Все сотрудники</option>';
+
+        allUsers.forEach(user => {
+            const option = document.createElement('option');
+            option.value = user.ID;
+            option.textContent = `${user.NAME} ${user.LAST_NAME}${user.WORK_POSITION ? ` (${user.WORK_POSITION})` : ''}`;
+            select.appendChild(option);
+        });
+
+        // Восстанавливаем выбранное значение если возможно
+        if (currentValue && allUsers.some(user => user.ID === currentValue)) {
+            select.value = currentValue;
+        }
+
+        console.log(`✅ Updated user select with ${allUsers.length} options`);
+    } catch (error) {
+        console.error('❌ Error updating user select:', error);
     }
-
-    // Сохраняем текущее выбранное значение
-    const currentValue = select.value;
-
-    // Очищаем и заполняем select
-    select.innerHTML = '<option value="all">Все сотрудники</option>';
-
-    allUsers.forEach(user => {
-        const option = document.createElement('option');
-        option.value = user.ID;
-        option.textContent = `${user.NAME} ${user.LAST_NAME}${user.WORK_POSITION ? ` (${user.WORK_POSITION})` : ''}`;
-        select.appendChild(option);
-    });
-
-    // Восстанавливаем выбранное значение если возможно
-    if (currentValue && allUsers.some(user => user.ID === currentValue)) {
-        select.value = currentValue;
-    }
-
-    console.log(`✅ Updated user select with ${allUsers.length} options`);
 }
+
+console.log('🔄 ULTRA-SAFE app.js loaded successfully');
 
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 function showLoading(elementId, message = 'Загрузка...') {
@@ -650,9 +749,6 @@ window.debugUsers = async function () {
         alert('Ошибка отладки: ' + error.message);
     }
 };
-
-// Остальные функции (findUsers, showAdminPanel, addAllowedEmail) остаются без изменений
-// ... [остальной код функций остается таким же] ...
 
 console.log('🔄 app.js loaded successfully');
 
