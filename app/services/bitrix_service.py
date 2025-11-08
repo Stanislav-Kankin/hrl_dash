@@ -109,6 +109,8 @@ class BitrixService:
             if start_date and end_date:
                 start_date_obj = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
                 end_date_obj = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                # ДОБАВЛЯЕМ 23:59:59 к конечной дате
+                end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59)
             elif days:
                 start_date_obj = datetime.now() - timedelta(days=days)
                 end_date_obj = datetime.now()
