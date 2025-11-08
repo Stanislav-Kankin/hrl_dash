@@ -188,7 +188,7 @@ async def get_detailed_stats(
         # Группируем активности по пользователям
         user_activities = {}
         for activity in activities:
-            user_id = activity['AUTHOR_ID']
+            user_id = str(activity['AUTHOR_ID'])
             if user_id not in user_activities:
                 user_activities[user_id] = []
             user_activities[user_id].append(activity)
