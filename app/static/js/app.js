@@ -379,71 +379,29 @@ async function applyFilters() {
 function displayUserStats(statsData) {
     console.log('📊 Displaying user stats:', statsData);
 
-    if (!statsData) {
+    if (!statsData || !statsData.user_stats) {
         showError('resultsBody', 'Нет данных для отображения');
         return;
     }
 
-    // Проверяем наличие user_stats
-    if (!statsData.user_stats || !Array.isArray(statsData.user_stats)) {
-        console.error('❌ Invalid user_stats:', statsData.user_stats);
-        showError('resultsBody', 'Некорректные данные от сервера');
-        return;
-    }
+    // ... существующий код ...
 
-    // ПОКАЗЫВАЕМ СКРЫТЫЕ СЕКЦИИ
-    const summaryCards = document.querySelector('.summary-cards');
-    const chartsSection = document.querySelector('.charts-section');
-
-    if (summaryCards) summaryCards.style.display = 'grid';
-    if (chartsSection) chartsSection.style.display = 'block';
-
-    let totalCalls = 0;
-    let totalComments = 0;
-    let totalTasks = 0;
-    let totalMeetings = 0;
-
-    // Считаем общую статистику
-    statsData.user_stats.forEach(user => {
-        totalCalls += user.calls || 0;
-        totalComments += user.comments || 0;
-        totalTasks += user.tasks || 0;
-        totalMeetings += user.meetings || 0;
-    });
-
-    // Обновляем summary cards
-    document.getElementById('activeUsers').textContent = statsData.active_users || 0;
-    document.getElementById('totalActivities').textContent = statsData.total_activities || 0;
-    document.getElementById('totalCalls').textContent = totalCalls;
-    document.getElementById('totalComments').textContent = totalComments;
-
-    // Добавляем среднее в день
-    const periodDays = statsData.period_days || 7;
-    const avgPerDay = statsData.total_activities ? Math.round(statsData.total_activities / periodDays) : 0;
-    document.getElementById('avgPerDay').textContent = avgPerDay;
-
-    // Обновляем графики если есть статистика
-    if (statsData.statistics) {
-        console.log('📈 Updating charts with statistics:', statsData.statistics);
-        ActivityCharts.updateAllCharts(statsData.statistics);
-    } else {
-        console.log('⚠️ No statistics data available');
-    }
+    // СОРТИРУЕМ ПОЛЬЗОВАТЕЛЕЙ ПО УБЫВАНИЮ АКТИВНОСТЕЙ
+    const sortedUserStats = [...statsData.user_stats].sort((a, b) => (b.total || 0) - (a.total || 0));
 
     const tbody = document.getElementById('resultsBody');
 
-    if (statsData.user_stats.length === 0) {
+    if (sortedUserStats.length === 0) {
         tbody.innerHTML = '<tr><td colspan="8" class="loading">Нет данных за выбранный период</td></tr>';
         return;
     }
 
     tbody.innerHTML = '';
 
-    // Очищаем предыдущие данные
     currentUserStats = {};
 
-    // Заполняем таблицу
-    statsData.user_stats.forEach(user => {
+    // Заполняем таблицу ОТСОРТИРОВАННЫМИ данными
+    sortedUserStats.forEach(user => {
         currentUserStats[user.user_id] = user;
 
         const row = document.createElement('tr');

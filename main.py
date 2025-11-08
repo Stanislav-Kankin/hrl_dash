@@ -135,7 +135,7 @@ async def get_detailed_stats(
     user_ids: str = None,
     activity_type: str = None,
     include_statistics: bool = False,
-    include_activities: bool = False  # НОВЫЙ ПАРАМЕТР
+    include_activities: bool = False
 ):
     """Получить детальную статистику с опциональной аналитикой"""
     try:
@@ -153,10 +153,29 @@ async def get_detailed_stats(
             activity_types=activity_types
         )
         
+        # Получаем ВСЕХ пресейл-сотрудников для статистики
+        presales_users = await bitrix_service.get_presales_users()
+        user_info_map = {user['ID']: user for user in presales_users}
+        
         if not activities:
+            # Возвращаем ВСЕХ пользователей даже если нет активностей
+            user_stats = []
+            for user_id, user_info in user_info_map.items():
+                user_stats.append({
+                    "user_id": user_id,
+                    "user_name": f"{user_info.get('NAME', '')} {user_info.get('LAST_NAME', '')}",
+                    "calls": 0,
+                    "comments": 0,
+                    "tasks": 0,
+                    "meetings": 0,
+                    "total": 0,
+                    "days_count": 0,
+                    "last_activity_date": "Нет данных"
+                })
+            
             return {
                 "success": True,
-                "user_stats": [],
+                "user_stats": user_stats,
                 "total_activities": 0,
                 "active_users": 0,
                 "period_days": days if not start_date else None,
@@ -166,31 +185,30 @@ async def get_detailed_stats(
                 } if start_date and end_date else None
             }
         
-        # Обрабатываем статистику по пользователям БЕЗ activities
-        user_stats = []
+        # Группируем активности по пользователям
         user_activities = {}
-        
         for activity in activities:
             user_id = activity['AUTHOR_ID']
             if user_id not in user_activities:
                 user_activities[user_id] = []
             user_activities[user_id].append(activity)
         
-        # Получаем информацию о пользователях
-        presales_users = await bitrix_service.get_presales_users()
-        user_info_map = {user['ID']: user for user in presales_users}
+        # Создаем статистику для ВСЕХ пресейл-сотрудников
+        user_stats = []
+        active_user_ids = set()
         
-        for user_id, user_acts in user_activities.items():
-            user_info = user_info_map.get(user_id)
-            if not user_info:
-                continue
-                
+        for user_id, user_info in user_info_map.items():
+            user_acts = user_activities.get(user_id, [])
+            
             # Считаем статистику по типам
             calls = len([a for a in user_acts if a['TYPE_ID'] == '2'])
             comments = len([a for a in user_acts if a['TYPE_ID'] == '6'])
             tasks = len([a for a in user_acts if a['TYPE_ID'] == '4'])
             meetings = len([a for a in user_acts if a['TYPE_ID'] == '1'])
             total = len(user_acts)
+            
+            if total > 0:
+                active_user_ids.add(user_id)
             
             # Дни активности
             activity_dates = set()
@@ -217,7 +235,7 @@ async def get_detailed_stats(
             }
             
             # ДОБАВЛЯЕМ ACTIVITIES ТОЛЬКО ЕСЛИ ЯВНО ЗАПРОШЕНО
-            if include_activities:
+            if include_activities and user_acts:
                 user_stat["activities"] = user_acts
             
             user_stats.append(user_stat)
@@ -228,7 +246,7 @@ async def get_detailed_stats(
             "success": True,
             "user_stats": user_stats,
             "total_activities": total_activities,
-            "active_users": len(user_stats),
+            "active_users": len(active_user_ids),  # Только пользователи с активностями
             "period_days": days if not start_date else None,
             "date_range": {
                 "start": start_date,
@@ -246,7 +264,7 @@ async def get_detailed_stats(
             )
             result["statistics"] = statistics
         
-        logger.info(f"✅ Returning stats: {len(user_stats)} users, {total_activities} total activities, include_activities: {include_activities}")
+        logger.info(f"✅ Returning stats: {len(user_stats)} users, {len(active_user_ids)} active users, {total_activities} total activities")
         return result
         
     except Exception as e:
