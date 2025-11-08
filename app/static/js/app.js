@@ -281,6 +281,7 @@ async function applyFilters() {
         const startDateInput = document.getElementById('startDate');
         const endDateInput = document.getElementById('endDate');
 
+
         console.log('🔍 Element status in applyFilters:', {
             employeesSelect: !!employeesSelect,
             activityTypeSelect: !!activityTypeSelect,
@@ -324,6 +325,13 @@ async function applyFilters() {
         console.error('Error applying filters:', error);
         showError('resultsBody', `Ошибка: ${error.message}`);
     }
+    console.log('🔍 Raw stats data:', statsData);
+    console.log('🔍 Activities by user:', statsData.user_stats.map(u => ({
+        user: u.user_name,
+        total: u.total,
+        calls: u.calls,
+        comments: u.comments
+    })));
 }
 
 // Функция для повторной попытки
@@ -539,7 +547,6 @@ window.showUserDetails = async function (userId) {
     panel.classList.add('active');
 
     try {
-        // 🔴 ИСПРАВЛЕНИЕ: ОБЪЯВЛЯЕМ ПЕРЕМЕННЫЕ
         const startDateInput = document.getElementById('startDate');
         const endDateInput = document.getElementById('endDate');
 
@@ -547,10 +554,20 @@ window.showUserDetails = async function (userId) {
             throw new Error('Date elements not found');
         }
 
+        // 🔴 ПРАВИЛЬНЫЙ ПОРЯДОК: сначала делаем запрос, потом проверяем ответ
         const response = await fetch(`/api/user-activities/${userId}?${new URLSearchParams({
             start_date: startDateInput.value,
             end_date: endDateInput.value
-        })}`);
+        })}`, {
+            headers: {
+                'Authorization': `Bearer ${BitrixAPI.authToken}`
+            }
+        });
+
+        // Проверяем статус ответа
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
 
         const data = await response.json();
 
