@@ -12,7 +12,7 @@ class BitrixService:
         self.webhook_url = os.getenv("BITRIX_WEBHOOK_URL")
         self.session = None
         self._cache = {}
-        self._cache_ttl = 300  # 5 минут кэширования
+        self._cache_ttl = 10
 
     async def ensure_session(self):
         """Создает сессию если её нет"""

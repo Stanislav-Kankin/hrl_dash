@@ -557,17 +557,12 @@ window.showUserDetails = async function (userId) {
             throw new Error('Date elements not found');
         }
 
-        // 🔴 ПРАВИЛЬНЫЙ ПОРЯДОК: сначала делаем запрос, потом проверяем ответ
-        const response = await fetch(`/api/user-activities/${userId}?${new URLSearchParams({
+        // 🔴 ИСПРАВЛЕНИЕ: используем BitrixAPI для запроса
+        const response = await BitrixAPI.makeRequest(`/api/user-activities/${userId}?${new URLSearchParams({
             start_date: startDateInput.value,
             end_date: endDateInput.value
-        })}`, {
-            headers: {
-                'Authorization': `Bearer ${BitrixAPI.authToken}`
-            }
-        });
+        })}`);
 
-        // Проверяем статус ответа
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
