@@ -15,7 +15,7 @@ class BitrixAPI {
     static async makeRequest(url, options = {}) {
         try {
             console.log('🔐 Making request to:', url);
-            
+
             // Создаем чистый объект headers
             const headers = {
                 'Content-Type': 'application/json'
@@ -37,11 +37,11 @@ class BitrixAPI {
             };
 
             console.log('🔐 Request options:', requestOptions);
-            
+
             const response = await fetch(url, requestOptions);
-            
+
             console.log('🔐 Response status:', response.status);
-            
+
             if (response.status === 401) {
                 this.clearAuthToken();
                 throw new Error('Authentication required - please login again');
@@ -89,7 +89,7 @@ class BitrixAPI {
 
     static async getDetailedStats(filters = {}) {
         const params = new URLSearchParams();
-        
+
         if (filters.days) params.append('days', filters.days);
         if (filters.start_date) params.append('start_date', filters.start_date);
         if (filters.end_date) params.append('end_date', filters.end_date);
@@ -100,6 +100,7 @@ class BitrixAPI {
             params.append('activity_type', filters.activity_type);
         }
         params.append('include_statistics', 'true');
+        params.append('include_activities', 'false');  // ПО УМОЛЧАНИЮ НЕ ВКЛЮЧАЕМ ACTIVITIES
 
         const response = await fetch(`/api/stats/detailed?${params}`);
         return await response.json();

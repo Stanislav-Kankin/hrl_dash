@@ -54,7 +54,7 @@ function initializeEventListeners() {
 function initAuth() {
     const token = BitrixAPI.authToken;
     console.log('🔐 Auth init, token exists:', !!token);
-    
+
     if (!token) {
         console.log('🔐 No auth token - showing login form');
         // Показываем сразу без задержки
@@ -108,14 +108,14 @@ async function initializeDashboard() {
 
         ActivityCharts.initCharts();
         await loadUsersList();
-        
+
         // ПРОВЕРЯЕМ АВТОРИЗАЦИЮ ПЕРЕД ЗАГРУЗКОЙ ДАННЫХ
         if (!BitrixAPI.authToken) {
             console.log('🔐 User not authenticated - hiding data');
             showLoginPrompt();
             return;
         }
-        
+
         await applyFilters();
 
     } catch (error) {
@@ -129,11 +129,11 @@ function showLoginPrompt() {
     const tbody = document.getElementById('resultsBody');
     const summaryCards = document.querySelector('.summary-cards');
     const chartsSection = document.querySelector('.charts-section');
-    
+
     // Скрываем данные
     if (summaryCards) summaryCards.style.display = 'none';
     if (chartsSection) chartsSection.style.display = 'none';
-    
+
     // Показываем сообщение о необходимости авторизации
     tbody.innerHTML = `
         <tr>
@@ -152,11 +152,11 @@ function showLoginPrompt() {
     const tbody = document.getElementById('resultsBody');
     const summaryCards = document.querySelector('.summary-cards');
     const chartsSection = document.querySelector('.charts-section');
-    
+
     // Скрываем данные
     if (summaryCards) summaryCards.style.display = 'none';
     if (chartsSection) chartsSection.style.display = 'none';
-    
+
     // Показываем сообщение о необходимости авторизации
     tbody.innerHTML = `
         <tr>
@@ -171,17 +171,17 @@ function showLoginPrompt() {
     `;
 }
 
-window.showAllowedEmails = async function() {
+window.showAllowedEmails = async function () {
     try {
         if (!BitrixAPI.authToken) {
             alert('❌ Для этой функции требуется авторизация');
             showAuthModal();
             return;
         }
-        
+
         const data = await BitrixAPI.getAllowedEmails();
         let message = '📧 Список разрешенных email-адресов для регистрации:\n\n';
-        
+
         if (data.allowed_emails && data.allowed_emails.length > 0) {
             data.allowed_emails.forEach((email, index) => {
                 message += `${index + 1}. ${email}\n`;
@@ -190,7 +190,7 @@ window.showAllowedEmails = async function() {
         } else {
             message += 'Нет разрешенных email-адресов';
         }
-        
+
         alert(message);
     } catch (error) {
         console.error('Show emails error:', error);
@@ -342,7 +342,7 @@ async function applyFilters() {
             showLoginPrompt();
             return;
         }
-        
+
         showLoading('resultsBody', 'Загрузка данных...');
 
         const period = document.getElementById('periodSelect').value;
@@ -378,7 +378,7 @@ async function applyFilters() {
 
 function displayUserStats(statsData) {
     console.log('📊 Displaying user stats:', statsData);
-    
+
     if (!statsData) {
         showError('resultsBody', 'Нет данных для отображения');
         return;
@@ -394,7 +394,7 @@ function displayUserStats(statsData) {
     // ПОКАЗЫВАЕМ СКРЫТЫЕ СЕКЦИИ
     const summaryCards = document.querySelector('.summary-cards');
     const chartsSection = document.querySelector('.charts-section');
-    
+
     if (summaryCards) summaryCards.style.display = 'grid';
     if (chartsSection) chartsSection.style.display = 'block';
 
@@ -416,7 +416,7 @@ function displayUserStats(statsData) {
     document.getElementById('totalActivities').textContent = statsData.total_activities || 0;
     document.getElementById('totalCalls').textContent = totalCalls;
     document.getElementById('totalComments').textContent = totalComments;
-    
+
     // Добавляем среднее в день
     const periodDays = statsData.period_days || 7;
     const avgPerDay = statsData.total_activities ? Math.round(statsData.total_activities / periodDays) : 0;
@@ -438,14 +438,14 @@ function displayUserStats(statsData) {
     }
 
     tbody.innerHTML = '';
-    
+
     // Очищаем предыдущие данные
     currentUserStats = {};
-    
+
     // Заполняем таблицу
     statsData.user_stats.forEach(user => {
         currentUserStats[user.user_id] = user;
-        
+
         const row = document.createElement('tr');
         row.innerHTML = `
             <td class="employee-name">${user.user_name}</td>
@@ -492,93 +492,116 @@ function showError(elementId, message) {
 }
 
 // Функция детализации
-window.showUserDetails = function(userId) {
+window.showUserDetails = async function (userId) {
     console.log('🔍 Showing details for user:', userId);
-    
+
     const userStats = currentUserStats[userId];
     if (!userStats) {
         alert('❌ Данные пользователя не найдены');
-        console.error('User stats not found for ID:', userId, 'Available:', Object.keys(currentUserStats));
         return;
     }
-    
+
     const panel = document.getElementById('detailsPanel');
     if (!panel) {
         console.error('❌ Details panel not found');
         return;
     }
-    
-    const activitiesByDay = {};
-    if (userStats.activities && userStats.activities.length > 0) {
-        userStats.activities.forEach(activity => {
-            try {
-                const activityDate = new Date(activity.CREATED.replace('Z', '+00:00'));
-                const dateKey = activityDate.toISOString().split('T')[0];
-                
-                if (!activitiesByDay[dateKey]) {
-                    activitiesByDay[dateKey] = [];
+
+    // Показываем загрузку
+    panel.innerHTML = '<div class="loading">Загрузка деталей...</div>';
+    panel.classList.add('active');
+
+    try {
+        // ЗАПРАШИВАЕМ АКТИВНОСТИ ОТДЕЛЬНО
+        const response = await fetch(`/api/user-activities/${userId}`);
+        const data = await response.json();
+
+        if (!data.success) {
+            throw new Error(data.error || 'Ошибка загрузки данных');
+        }
+
+        const activities = data.activities || [];
+
+        // ... остальной код обработки activities ...
+        const activitiesByDay = {};
+        if (activities && activities.length > 0) {
+            activities.forEach(activity => {
+                try {
+                    const activityDate = new Date(activity.CREATED.replace('Z', '+00:00'));
+                    const dateKey = activityDate.toISOString().split('T')[0];
+
+                    if (!activitiesByDay[dateKey]) {
+                        activitiesByDay[dateKey] = [];
+                    }
+
+                    activitiesByDay[dateKey].push({
+                        time: activityDate.toLocaleTimeString('ru-RU'),
+                        type: ACTIVITY_TYPES[activity.TYPE_ID]?.name || 'Другое',
+                        type_class: ACTIVITY_TYPES[activity.TYPE_ID]?.class || 'badge-task',
+                        description: activity.DESCRIPTION || activity.SUBJECT || 'Без описания',
+                        type_id: activity.TYPE_ID
+                    });
+                } catch (e) {
+                    console.error('Error processing activity:', activity, e);
                 }
-                
-                activitiesByDay[dateKey].push({
-                    time: activityDate.toLocaleTimeString('ru-RU'),
-                    type: ACTIVITY_TYPES[activity.TYPE_ID]?.name || 'Другое',
-                    type_class: ACTIVITY_TYPES[activity.TYPE_ID]?.class || 'badge-task',
-                    description: activity.DESCRIPTION || activity.SUBJECT || 'Без описания',
-                    type_id: activity.TYPE_ID
-                });
-            } catch (e) {
-                console.error('Error processing activity:', activity, e);
-            }
-        });
+            });
+        }
+
+        // ... остальной код отображения ...
+
+    } catch (error) {
+        console.error('❌ Error loading user details:', error);
+        panel.innerHTML = `<div class="error">Ошибка загрузки деталей: ${error.message}</div>`;
     }
-    
-    const sortedDays = Object.keys(activitiesByDay).sort().reverse();
-    
-    let html = `
+};
+
+const sortedDays = Object.keys(activitiesByDay).sort().reverse();
+
+let html = `
         <div class="details-header">
             <h3>📋 Детализация активностей: ${userStats.user_name}</h3>
             <button class="quick-btn" onclick="document.getElementById('detailsPanel').classList.remove('active')">✕ Закрыть</button>
         </div>
         <div class="details-content">
     `;
-    
-    if (sortedDays.length === 0) {
-        html += `<div class="loading">Нет данных об активностях</div>`;
-    } else {
-        sortedDays.forEach(day => {
-            const activities = activitiesByDay[day];
-            const date = new Date(day);
-            const dayName = date.toLocaleDateString('ru-RU', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            });
-            
-            html += `
+
+if (sortedDays.length === 0) {
+    html += `<div class="loading">Нет данных об активностях</div>`;
+} else {
+    sortedDays.forEach(day => {
+        const activities = activitiesByDay[day];
+        const date = new Date(day);
+        const dayName = date.toLocaleDateString('ru-RU', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+
+        html += `
                 <div class="day-group">
                     <div class="day-header">📅 ${dayName} (${activities.length} активностей)</div>
             `;
-            
-            activities.forEach(activity => {
-                html += `
+
+        activities.forEach(activity => {
+            html += `
                     <div class="activity-item">
                         <span class="activity-time">${activity.time}</span>
                         <span class="activity-type ${activity.type_class}">${activity.type}</span>
                         <span class="activity-description">${activity.description}</span>
                     </div>
                 `;
-            });
-            
-            html += `</div>`;
         });
-    }
-    
-    html += `</div>`;
-    panel.innerHTML = html;
-    panel.classList.add('active');
-    
-    console.log('✅ Details panel updated for user:', userId);
+
+        html += `</div>`;
+    });
+}
+
+html += `</div>`;
+panel.innerHTML = html;
+panel.classList.add('active');
+
+console.log('✅ Details panel updated for user:', userId);
 };
 
 // Глобальные функции

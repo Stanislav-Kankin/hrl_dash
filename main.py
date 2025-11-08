@@ -134,7 +134,8 @@ async def get_detailed_stats(
     end_date: str = None,
     user_ids: str = None,
     activity_type: str = None,
-    include_statistics: bool = False
+    include_statistics: bool = False,
+    include_activities: bool = False  # НОВЫЙ ПАРАМЕТР
 ):
     """Получить детальную статистику с опциональной аналитикой"""
     try:
@@ -165,10 +166,7 @@ async def get_detailed_stats(
                 } if start_date and end_date else None
             }
         
-        # ОГРАНИЧИВАЕМ КОЛИЧЕСТВО АКТИВНОСТЕЙ ДЛЯ КАЖДОГО ПОЛЬЗОВАТЕЛЯ
-        MAX_ACTIVITIES_PER_USER = 300  # Максимум 300 активностей на пользователя
-        
-        # Обрабатываем статистику по пользователям
+        # Обрабатываем статистику по пользователям БЕЗ activities
         user_stats = []
         user_activities = {}
         
@@ -176,9 +174,7 @@ async def get_detailed_stats(
             user_id = activity['AUTHOR_ID']
             if user_id not in user_activities:
                 user_activities[user_id] = []
-            # Добавляем только если не превышен лимит
-            if len(user_activities[user_id]) < MAX_ACTIVITIES_PER_USER:
-                user_activities[user_id].append(activity)
+            user_activities[user_id].append(activity)
         
         # Получаем информацию о пользователях
         presales_users = await bitrix_service.get_presales_users()
@@ -208,7 +204,7 @@ async def get_detailed_stats(
                 if not last_activity or act_date > last_activity:
                     last_activity = act_date
             
-            user_stats.append({
+            user_stat = {
                 "user_id": user_id,
                 "user_name": f"{user_info.get('NAME', '')} {user_info.get('LAST_NAME', '')}",
                 "calls": calls,
@@ -217,9 +213,14 @@ async def get_detailed_stats(
                 "meetings": meetings,
                 "total": total,
                 "days_count": len(activity_dates),
-                "last_activity_date": last_activity.strftime('%Y-%m-%d %H:%M') if last_activity else "Нет данных",
-                "activities": user_acts  # Теперь здесь только ограниченное количество
-            })
+                "last_activity_date": last_activity.strftime('%Y-%m-%d %H:%M') if last_activity else "Нет данных"
+            }
+            
+            # ДОБАВЛЯЕМ ACTIVITIES ТОЛЬКО ЕСЛИ ЯВНО ЗАПРОШЕНО
+            if include_activities:
+                user_stat["activities"] = user_acts
+            
+            user_stats.append(user_stat)
         
         total_activities = len(activities)
         
@@ -245,7 +246,7 @@ async def get_detailed_stats(
             )
             result["statistics"] = statistics
         
-        logger.info(f"✅ Returning stats: {len(user_stats)} users, {total_activities} total activities")
+        logger.info(f"✅ Returning stats: {len(user_stats)} users, {total_activities} total activities, include_activities: {include_activities}")
         return result
         
     except Exception as e:
@@ -353,6 +354,33 @@ async def find_users(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         logger.error(f"Error in find-users: {str(e)}")
         return {"error": str(e)}
+    
+@app.get("/api/user-activities/{user_id}")
+async def get_user_activities(
+    user_id: str,
+    days: int = 30,
+    start_date: str = None,
+    end_date: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Получить активности конкретного пользователя (для детализации)"""
+    try:
+        activities = await bitrix_service.get_activities(
+            days=days,
+            start_date=start_date,
+            end_date=end_date,
+            user_ids=[user_id]
+        )
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "activities": activities or []
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting user activities: {str(e)}")
+        return {"success": False, "error": str(e)}
 
 # Админ эндпоинты для управления белым списком
 @app.get("/api/admin/allowed-emails")
