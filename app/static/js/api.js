@@ -90,7 +90,6 @@ class BitrixAPI {
     static async getDetailedStats(filters = {}) {
         const params = new URLSearchParams();
 
-        if (filters.days) params.append('days', filters.days);
         if (filters.start_date) params.append('start_date', filters.start_date);
         if (filters.end_date) params.append('end_date', filters.end_date);
         if (filters.user_ids && filters.user_ids.length > 0) {
@@ -100,7 +99,9 @@ class BitrixAPI {
             params.append('activity_type', filters.activity_type);
         }
         params.append('include_statistics', 'true');
-        params.append('include_activities', 'false');  // ПО УМОЛЧАНИЮ НЕ ВКЛЮЧАЕМ ACTIVITIES
+        params.append('include_activities', 'false');
+
+        console.log('🔍 Fetching stats with params:', params.toString());
 
         const response = await fetch(`/api/stats/detailed?${params}`);
         return await response.json();

@@ -376,7 +376,6 @@ async def find_users(current_user: dict = Depends(get_current_user)):
 @app.get("/api/user-activities/{user_id}")
 async def get_user_activities(
     user_id: str,
-    days: int = 30,
     start_date: str = None,
     end_date: str = None,
     current_user: dict = Depends(get_current_user)
@@ -384,7 +383,6 @@ async def get_user_activities(
     """Получить активности конкретного пользователя (для детализации)"""
     try:
         activities = await bitrix_service.get_activities(
-            days=days,
             start_date=start_date,
             end_date=end_date,
             user_ids=[user_id]

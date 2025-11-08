@@ -19,6 +19,8 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 function initializeEventListeners() {
+    // Устанавливаем даты по умолчанию
+    setDefaultDates();
 
     const modal = document.getElementById('authModal');
     const closeBtn = document.querySelector('.close');
@@ -34,18 +36,14 @@ function initializeEventListeners() {
     });
 }
 
-const modal = document.getElementById('authModal');
-const closeBtn = document.querySelector('.close');
+function setDefaultDates() {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
 
-if (closeBtn) {
-    closeBtn.addEventListener('click', hideAuthModal);
-}
+    const endDate = new Date();
 
-window.addEventListener('click', function (event) {
-    if (event.target === modal) {
-        hideAuthModal();
-    }
-});
+    document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
+    document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
 }
 
 function initAuth() {
@@ -54,7 +52,6 @@ function initAuth() {
 
     if (!token) {
         console.log('🔐 No auth token - showing login form');
-        // Показываем сразу без задержки
         showAuthModal();
     } else {
         checkAuthStatus();
@@ -145,192 +142,7 @@ function showLoginPrompt() {
     `;
 }
 
-function showLoginPrompt() {
-    const tbody = document.getElementById('resultsBody');
-    const summaryCards = document.querySelector('.summary-cards');
-    const chartsSection = document.querySelector('.charts-section');
-
-    // Скрываем данные
-    if (summaryCards) summaryCards.style.display = 'none';
-    if (chartsSection) chartsSection.style.display = 'none';
-
-    // Показываем сообщение о необходимости авторизации
-    tbody.innerHTML = `
-        <tr>
-            <td colspan="8" style="text-align: center; padding: 40px; color: #666;">
-                <h3>🔐 Требуется авторизация</h3>
-                <p>Для просмотра данных необходимо войти в систему</p>
-                <button class="apply-btn" onclick="showAuthModal()" style="margin-top: 15px;">
-                    Войти в систему
-                </button>
-            </td>
-        </tr>
-    `;
-}
-
-window.showAllowedEmails = async function () {
-    try {
-        if (!BitrixAPI.authToken) {
-            alert('❌ Для этой функции требуется авторизация');
-            showAuthModal();
-            return;
-        }
-
-        const data = await BitrixAPI.getAllowedEmails();
-        let message = '📧 Список разрешенных email-адресов для регистрации:\n\n';
-
-        if (data.allowed_emails && data.allowed_emails.length > 0) {
-            data.allowed_emails.forEach((email, index) => {
-                message += `${index + 1}. ${email}\n`;
-            });
-            message += `\nВсего: ${data.allowed_emails.length} email-адресов`;
-        } else {
-            message += 'Нет разрешенных email-адресов';
-        }
-
-        alert(message);
-    } catch (error) {
-        console.error('Show emails error:', error);
-        if (error.message.includes('401') || error.message.includes('Authentication')) {
-            alert('❌ Ошибка авторизации. Пожалуйста, войдите снова.');
-            showAuthModal();
-        } else {
-            alert('❌ Ошибка: ' + error.message);
-        }
-    }
-};
-
-// Функции аутентификации
-function showAuthModal() {
-    console.log('🔄 Showing auth modal');
-    const modal = document.getElementById('authModal');
-    if (modal) {
-        modal.style.display = 'block';
-        showLogin();
-    } else {
-        console.error('❌ Auth modal not found!');
-    }
-}
-
-function hideAuthModal() {
-    const modal = document.getElementById('authModal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
-}
-
-function showLogin() {
-    document.getElementById('loginForm').style.display = 'block';
-    document.getElementById('registerForm').style.display = 'none';
-}
-
-function showRegister() {
-    document.getElementById('loginForm').style.display = 'none';
-    document.getElementById('registerForm').style.display = 'block';
-}
-
-async function login(event) {
-    if (event) event.preventDefault();
-
-    const email = document.getElementById('loginEmail').value;
-    const password = document.getElementById('loginPassword').value;
-
-    console.log('🔐 Login attempt:', { email, password });
-
-    if (!email || !password) {
-        alert('❌ Пожалуйста, заполните все поля');
-        return false;
-    }
-
-    try {
-        console.log('🔐 Attempting login for:', email);
-        const data = await BitrixAPI.login(email, password);
-        console.log('🔐 Login response:', data);
-
-        if (data.access_token) {
-            BitrixAPI.setAuthToken(data.access_token);
-            console.log('✅ Token set');
-            hideAuthModal();
-            await checkAuthStatus();
-        } else {
-            console.error('❌ No token in response');
-            alert('Ошибка: токен не получен');
-        }
-    } catch (error) {
-        console.error('❌ Login error:', error);
-        alert('❌ Ошибка входа: ' + error.message);
-    }
-
-    return false;
-}
-
-async function register(event) {
-    if (event) event.preventDefault();
-
-    const email = document.getElementById('registerEmail').value;
-    const password = document.getElementById('registerPassword').value;
-    const full_name = document.getElementById('registerName').value;
-
-    if (!email || !password) {
-        alert('❌ Пожалуйста, заполните email и пароль');
-        return false;
-    }
-
-    try {
-        console.log('🔐 Attempting registration for:', email);
-        const data = await BitrixAPI.register(email, password, full_name);
-        console.log('🔐 Registration response:', data);
-
-        if (data.email) {
-            alert('✅ Регистрация успешна! Теперь войдите в систему.');
-            showLogin();
-        }
-    } catch (error) {
-        console.error('❌ Registration error:', error);
-        alert('❌ Ошибка регистрации: ' + error.message);
-    }
-
-    return false;
-}
-
-function updateUIForAuth() {
-    const authButton = document.getElementById('authButton');
-    if (authButton && currentUser) {
-        authButton.textContent = `👤 ${currentUser.full_name || currentUser.email} (Выйти)`;
-        authButton.onclick = logout;
-    }
-}
-
-function logout() {
-    BitrixAPI.clearAuthToken();
-    currentUser = null;
-
-    const authButton = document.getElementById('authButton');
-    if (authButton) {
-        authButton.textContent = '🔐 Вход для админа';
-        authButton.onclick = showAuthModal;
-    }
-
-    alert('✅ Вы вышли из системы');
-}
-
-// Основные функции
-async function loadUsersList() {
-    try {
-        showLoading('resultsBody', 'Загрузка сотрудников...');
-        const data = await BitrixAPI.getUsersList();
-
-        if (data.users) {
-            allUsers = data.users;
-            updateUserSelect();
-        } else {
-            throw new Error(data.error || 'Не удалось загрузить сотрудников');
-        }
-    } catch (error) {
-        console.error('Ошибка загрузки сотрудников:', error);
-        showError('resultsBody', `Ошибка: ${error.message}`);
-    }
-}
+// ОСТАЛЬНЫЕ ФУНКЦИИ ОСТАЮТСЯ ПРЕЖНИМИ (login, register, etc.)
 
 async function applyFilters() {
     try {
@@ -344,8 +156,18 @@ async function applyFilters() {
 
         const employeeFilter = document.getElementById('employeesSelect').value;
         const activityTypeFilter = document.getElementById('activityTypeSelect').value;
-        const startDate = document.getElementById('startDate').value;
-        const endDate = document.getElementById('endDate').value;
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+
+        // ПРОВЕРЯЕМ ЧТО ЭЛЕМЕНТЫ СУЩЕСТВУЮТ
+        if (!startDateInput || !endDateInput) {
+            console.error('❌ Date inputs not found');
+            showError('resultsBody', 'Ошибка: поля дат не найдены');
+            return;
+        }
+
+        const startDate = startDateInput.value;
+        const endDate = endDateInput.value;
 
         // ВАЛИДАЦИЯ ДАТ
         if (!startDate || !endDate) {
@@ -364,6 +186,8 @@ async function applyFilters() {
             start_date: startDate,
             end_date: endDate
         };
+
+        console.log('🔍 Applying filters:', filters);
 
         const statsData = await BitrixAPI.getDetailedStats(filters);
         if (statsData) {
@@ -384,7 +208,33 @@ function displayUserStats(statsData) {
         return;
     }
 
-    // ... существующий код ...
+    // ПОКАЗЫВАЕМ СКРЫТЫЕ СЕКЦИИ
+    const summaryCards = document.querySelector('.summary-cards');
+    const chartsSection = document.querySelector('.charts-section');
+
+    if (summaryCards) summaryCards.style.display = 'grid';
+    if (chartsSection) chartsSection.style.display = 'block';
+
+    let totalCalls = 0;
+    let totalComments = 0;
+    let totalTasks = 0;
+    let totalMeetings = 0;
+
+    statsData.user_stats.forEach(user => {
+        totalCalls += user.calls || 0;
+        totalComments += user.comments || 0;
+        totalTasks += user.tasks || 0;
+        totalMeetings += user.meetings || 0;
+    });
+
+    document.getElementById('activeUsers').textContent = statsData.active_users || 0;
+    document.getElementById('totalActivities').textContent = statsData.total_activities || 0;
+    document.getElementById('totalCalls').textContent = totalCalls;
+    document.getElementById('totalComments').textContent = totalComments;
+
+    if (statsData.statistics) {
+        ActivityCharts.updateAllCharts(statsData.statistics);
+    }
 
     // СОРТИРУЕМ ПОЛЬЗОВАТЕЛЕЙ ПО УБЫВАНИЮ АКТИВНОСТЕЙ
     const sortedUserStats = [...statsData.user_stats].sort((a, b) => (b.total || 0) - (a.total || 0));
@@ -421,6 +271,7 @@ function displayUserStats(statsData) {
 
     console.log('✅ User stats displayed successfully');
 }
+
 
 function updateUserSelect() {
     const select = document.getElementById('employeesSelect');

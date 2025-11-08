@@ -35,10 +35,9 @@
             <div class="filter-item" id="customDateRange">
                 <label>Диапазон дат:</label>
                 <div class="date-range-inputs">
-                    <input type="date" id="startDate"
-                        value="${new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]}">
+                    <input type="date" id="startDate">
                     <span class="date-range-separator">—</span>
-                    <input type="date" id="endDate" value="${new Date().toISOString().split('T')[0]}">
+                    <input type="date" id="endDate">
                 </div>
             </div>
 
