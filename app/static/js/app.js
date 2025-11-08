@@ -181,77 +181,79 @@ async function loadUsersList() {
 
 // ЕДИНСТВЕННОЕ ОБЪЯВЛЕНИЕ applyFilters
 async function applyFilters() {
-    try {
-        if (!BitrixAPI.authToken) {
-            showLoginPrompt();
-            return;
-        }
+    // БЫСТРАЯ ПРОВЕРКА
+    if (!document.getElementById('employeesSelect') ||
+        !document.getElementById('startDate')) {
+        console.log('⏳ Elements not ready, delaying applyFilters...');
+        setTimeout(applyFilters, 500);
+        return;
+    }
 
-        showLoading('resultsBody', 'Загрузка данных...');
+    showLoading('resultsBody', 'Загрузка данных...');
 
-        // ПРОВЕРКА ЭЛЕМЕНТОВ С ЗАЩИТОЙ ОТ NULL
-        const getElementValue = (id, defaultValue = '') => {
-            const element = document.getElementById(id);
-            return element ? element.value : defaultValue;
-        };
+    // ПРОВЕРКА ЭЛЕМЕНТОВ С ЗАЩИТОЙ ОТ NULL
+    const getElementValue = (id, defaultValue = '') => {
+        const element = document.getElementById(id);
+        return element ? element.value : defaultValue;
+    };
 
-        const employeesSelect = document.getElementById('employeesSelect');
-        const activityTypeSelect = document.getElementById('activityTypeSelect');
-        const startDateInput = document.getElementById('startDate');
-        const endDateInput = document.getElementById('endDate');
+    const employeesSelect = document.getElementById('employeesSelect');
+    const activityTypeSelect = document.getElementById('activityTypeSelect');
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
 
-        console.log('🔍 Final element check in applyFilters:', {
+    console.log('🔍 Final element check in applyFilters:', {
+        employeesSelect: !!employeesSelect,
+        activityTypeSelect: !!activityTypeSelect,
+        startDate: !!startDateInput,
+        endDate: !!endDateInput
+    });
+
+    // ЕСЛИ КРИТИЧЕСКИЕ ЭЛЕМЕНТЫ ОТСУТСТВУЮТ - ПРЕРЫВАЕМ
+    if (!employeesSelect || !activityTypeSelect || !startDateInput || !endDateInput) {
+        console.error('❌ Critical UI elements missing:', {
             employeesSelect: !!employeesSelect,
             activityTypeSelect: !!activityTypeSelect,
             startDate: !!startDateInput,
             endDate: !!endDateInput
         });
 
-        // ЕСЛИ КРИТИЧЕСКИЕ ЭЛЕМЕНТЫ ОТСУТСТВУЮТ - ПРЕРЫВАЕМ
-        if (!employeesSelect || !activityTypeSelect || !startDateInput || !endDateInput) {
-            console.error('❌ Critical UI elements missing:', {
-                employeesSelect: !!employeesSelect,
-                activityTypeSelect: !!activityTypeSelect,
-                startDate: !!startDateInput,
-                endDate: !!endDateInput
-            });
-
-            // Пытаемся переинициализировать через секунду
-            setTimeout(() => {
-                console.log('🔄 Retrying initialization...');
-                initializeDashboard();
-            }, 1000);
-            return;
-        }
-
-        const employeeFilter = employeesSelect.value;
-        const activityTypeFilter = activityTypeSelect.value;
-        const startDate = startDateInput.value;
-        const endDate = endDateInput.value;
-
-        if (!startDate || !endDate) {
-            alert('❌ Пожалуйста, выберите диапазон дат');
-            return;
-        }
-
-        const filters = {
-            user_ids: employeeFilter === 'all' ? [] : [employeeFilter],
-            activity_type: activityTypeFilter === 'all' ? null : activityTypeFilter,
-            start_date: startDate,
-            end_date: endDate
-        };
-
-        console.log('🔍 Applying filters:', filters);
-        const statsData = await BitrixAPI.getDetailedStats(filters);
-
-        if (statsData) {
-            displayUserStats(statsData);
-        }
-
-    } catch (error) {
-        console.error('Error applying filters:', error);
-        showError('resultsBody', `Ошибка: ${error.message}`);
+        // Пытаемся переинициализировать через секунду
+        setTimeout(() => {
+            console.log('🔄 Retrying initialization...');
+            initializeDashboard();
+        }, 1000);
+        return;
     }
+
+    const employeeFilter = employeesSelect.value;
+    const activityTypeFilter = activityTypeSelect.value;
+    const startDate = startDateInput.value;
+    const endDate = endDateInput.value;
+
+    if (!startDate || !endDate) {
+        alert('❌ Пожалуйста, выберите диапазон дат');
+        return;
+    }
+
+    const filters = {
+        user_ids: employeeFilter === 'all' ? [] : [employeeFilter],
+        activity_type: activityTypeFilter === 'all' ? null : activityTypeFilter,
+        start_date: startDate,
+        end_date: endDate
+    };
+
+    console.log('🔍 Applying filters:', filters);
+    const statsData = await BitrixAPI.getDetailedStats(filters);
+
+    if (statsData) {
+        displayUserStats(statsData);
+    }
+
+} catch (error) {
+    console.error('Error applying filters:', error);
+    showError('resultsBody', `Ошибка: ${error.message}`);
+}
 }
 
 function displayUserStats(statsData) {
