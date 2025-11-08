@@ -271,6 +271,7 @@ async function applyFilters() {
         if (!BitrixAPI.authToken || !currentUser) {
             showLoginPrompt();
             return;
+
         }
 
         showLoading('resultsBody', 'Загрузка данных...');
@@ -317,6 +318,14 @@ async function applyFilters() {
         console.log('🔍 Sending filters:', filters);
         const statsData = await BitrixAPI.getDetailedStats(filters);
 
+        console.log('🔍 Raw stats data:', statsData);
+        console.log('🔍 Activities by user:', statsData.user_stats.map(u => ({
+            user: u.user_name,
+            total: u.total,
+            calls: u.calls,
+            comments: u.comments
+        })));
+
         if (statsData) {
             displayUserStats(statsData);
         }
@@ -325,13 +334,7 @@ async function applyFilters() {
         console.error('Error applying filters:', error);
         showError('resultsBody', `Ошибка: ${error.message}`);
     }
-    console.log('🔍 Raw stats data:', statsData);
-    console.log('🔍 Activities by user:', statsData.user_stats.map(u => ({
-        user: u.user_name,
-        total: u.total,
-        calls: u.calls,
-        comments: u.comments
-    })));
+
 }
 
 // Функция для повторной попытки
