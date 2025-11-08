@@ -20,10 +20,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
 function initializeEventListeners() {
     console.log('🔧 Initializing event listeners...');
-    
+
     // Устанавливаем даты по умолчанию
     setTimeout(setDefaultDates, 100);
-    
+
     const modal = document.getElementById('authModal');
     const closeBtn = document.querySelector('.close');
 
@@ -41,13 +41,13 @@ function initializeEventListeners() {
 function setDefaultDates() {
     const startDateEl = document.getElementById('startDate');
     const endDateEl = document.getElementById('endDate');
-    
+
     if (!startDateEl || !endDateEl) {
         console.log('❌ Date elements still not found, retrying...');
         setTimeout(setDefaultDates, 200);
         return;
     }
-    
+
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 30);
     const endDate = new Date();
@@ -73,7 +73,7 @@ async function checkAuthStatus() {
         const userData = await BitrixAPI.getCurrentUser();
         currentUser = userData;
         console.log('✅ User authenticated:', currentUser.email);
-        
+
         const authButton = document.getElementById('authButton');
         if (authButton) {
             authButton.textContent = `👤 ${currentUser.full_name} (Выйти)`;
@@ -88,10 +88,10 @@ async function checkAuthStatus() {
 async function initializeDashboard() {
     try {
         console.log('📊 Initializing dashboard...');
-        
-        // Ждем пока все элементы загрузятся
-        await waitForElements();
-        
+
+        // Ждем пока все элементы загрузятся с таймаутом
+        await waitForElementsWithTimeout(5000); // 5 секунд максимум
+
         ActivityCharts.initCharts();
         await loadUsersList();
 
@@ -104,26 +104,45 @@ async function initializeDashboard() {
 
     } catch (error) {
         console.error('❌ Dashboard init error:', error);
-        showError('resultsBody', `Ошибка: ${error.message}`);
+        showError('resultsBody', `Ошибка инициализации: ${error.message}`);
     }
+}
+
+async function waitForElementsWithTimeout(maxWaitTime = 5000) {
+    const requiredElements = ['employeesSelect', 'activityTypeSelect', 'startDate', 'endDate'];
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitTime) {
+        const allLoaded = requiredElements.every(id => document.getElementById(id) !== null);
+
+        if (allLoaded) {
+            console.log('✅ All elements loaded successfully');
+            return;
+        }
+
+        console.log(`⏳ Waiting for elements... ${Date.now() - startTime}ms`);
+        await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    throw new Error(`Failed to load required elements after ${maxWaitTime}ms`);
 }
 
 // Ждем загрузки элементов
 async function waitForElements() {
     const requiredElements = ['employeesSelect', 'activityTypeSelect', 'startDate', 'endDate'];
-    
+
     for (let attempt = 1; attempt <= 10; attempt++) {
         const allLoaded = requiredElements.every(id => document.getElementById(id) !== null);
-        
+
         if (allLoaded) {
             console.log('✅ All elements loaded successfully');
             return;
         }
-        
+
         console.log(`⏳ Waiting for elements... attempt ${attempt}/10`);
         await new Promise(resolve => setTimeout(resolve, 200));
     }
-    
+
     throw new Error('Failed to load required elements after 10 attempts');
 }
 
@@ -170,7 +189,12 @@ async function applyFilters() {
 
         showLoading('resultsBody', 'Загрузка данных...');
 
-        // ПРОВЕРКА ЭЛЕМЕНТОВ
+        // ПРОВЕРКА ЭЛЕМЕНТОВ С ЗАЩИТОЙ ОТ NULL
+        const getElementValue = (id, defaultValue = '') => {
+            const element = document.getElementById(id);
+            return element ? element.value : defaultValue;
+        };
+
         const employeesSelect = document.getElementById('employeesSelect');
         const activityTypeSelect = document.getElementById('activityTypeSelect');
         const startDateInput = document.getElementById('startDate');
@@ -183,8 +207,21 @@ async function applyFilters() {
             endDate: !!endDateInput
         });
 
+        // ЕСЛИ КРИТИЧЕСКИЕ ЭЛЕМЕНТЫ ОТСУТСТВУЮТ - ПРЕРЫВАЕМ
         if (!employeesSelect || !activityTypeSelect || !startDateInput || !endDateInput) {
-            throw new Error('Critical UI elements missing');
+            console.error('❌ Critical UI elements missing:', {
+                employeesSelect: !!employeesSelect,
+                activityTypeSelect: !!activityTypeSelect,
+                startDate: !!startDateInput,
+                endDate: !!endDateInput
+            });
+
+            // Пытаемся переинициализировать через секунду
+            setTimeout(() => {
+                console.log('🔄 Retrying initialization...');
+                initializeDashboard();
+            }, 1000);
+            return;
         }
 
         const employeeFilter = employeesSelect.value;
@@ -268,7 +305,7 @@ function updateUserSelect() {
         console.error('❌ employeesSelect not found in updateUserSelect');
         return;
     }
-    
+
     select.innerHTML = '<option value="all">Все сотрудники</option>';
     allUsers.forEach(user => {
         const option = document.createElement('option');
@@ -377,7 +414,7 @@ function logout() {
 }
 
 // ФУНКЦИЯ ДЕТАЛИЗАЦИИ
-window.showUserDetails = async function(userId) {
+window.showUserDetails = async function (userId) {
     console.log('🔍 Showing details for user:', userId);
 
     const userStats = currentUserStats[userId];
@@ -400,7 +437,7 @@ window.showUserDetails = async function(userId) {
             start_date: document.getElementById('startDate').value,
             end_date: document.getElementById('endDate').value
         })}`);
-        
+
         const data = await response.json();
 
         if (!data.success) {
@@ -409,7 +446,7 @@ window.showUserDetails = async function(userId) {
 
         const activities = data.activities || [];
         const activitiesByDay = {};
-        
+
         if (activities && activities.length > 0) {
             activities.forEach(activity => {
                 try {
@@ -451,7 +488,7 @@ window.showUserDetails = async function(userId) {
                 const date = new Date(day);
                 const dayName = date.toLocaleDateString('ru-RU', {
                     weekday: 'long',
-                    year: 'numeric', 
+                    year: 'numeric',
                     month: 'long',
                     day: 'numeric'
                 });
