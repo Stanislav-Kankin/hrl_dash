@@ -181,37 +181,26 @@ async function loadUsersList() {
 
 async function applyFilters() {
     try {
-        console.log('🔄 applyFilters called');
-        
-        // Простая проверка с задержкой
-        const checkElement = (id) => {
-            const el = document.getElementById(id);
-            if (!el) {
-                console.log(`❌ Element ${id} not found, retrying...`);
-                setTimeout(applyFilters, 300);
-                return null;
-            }
-            return el;
-        };
-
-        const employeesSelect = checkElement('employeesSelect');
-        const startDateInput = checkElement('startDate');
-        
-        if (!employeesSelect || !startDateInput) return;
-
-        // Остальные элементы (не критичные)
-        const activityTypeSelect = document.getElementById('activityTypeSelect');
-        const endDateInput = document.getElementById('endDate');
+        if (!BitrixAPI.authToken) {
+            showLoginPrompt();
+            return;
+        }
 
         showLoading('resultsBody', 'Загрузка данных...');
 
-        const employeeFilter = employeesSelect.value;
-        const activityTypeFilter = activityTypeSelect ? activityTypeSelect.value : 'all';
-        const startDate = startDateInput.value;
-        const endDate = endDateInput ? endDateInput.value : new Date().toISOString().split('T')[0];
+        // ПРОСТАЯ ПРОВЕРКА БЕЗ ЗАЩИТЫ
+        const employeesSelect = document.getElementById('employeesSelect');
+        const activityTypeSelect = document.getElementById('activityTypeSelect');
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
 
-        if (!startDate) {
-            alert('❌ Пожалуйста, выберите начальную дату');
+        const employeeFilter = employeesSelect.value;
+        const activityTypeFilter = activityTypeSelect.value;
+        const startDate = startDateInput.value;
+        const endDate = endDateInput.value;
+
+        if (!startDate || !endDate) {
+            alert('❌ Пожалуйста, выберите диапазон дат');
             return;
         }
 
@@ -219,7 +208,7 @@ async function applyFilters() {
             user_ids: employeeFilter === 'all' ? [] : [employeeFilter],
             activity_type: activityTypeFilter === 'all' ? null : activityTypeFilter,
             start_date: startDate,
-            end_date: endDate || new Date().toISOString().split('T')[0]
+            end_date: endDate
         };
 
         console.log('🔍 Applying filters:', filters);
