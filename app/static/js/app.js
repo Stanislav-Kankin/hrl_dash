@@ -377,6 +377,20 @@ async function applyFilters() {
 }
 
 function displayUserStats(statsData) {
+    console.log('📊 Displaying user stats:', statsData);
+    
+    if (!statsData) {
+        showError('resultsBody', 'Нет данных для отображения');
+        return;
+    }
+
+    // Проверяем наличие user_stats
+    if (!statsData.user_stats || !Array.isArray(statsData.user_stats)) {
+        console.error('❌ Invalid user_stats:', statsData.user_stats);
+        showError('resultsBody', 'Некорректные данные от сервера');
+        return;
+    }
+
     // ПОКАЗЫВАЕМ СКРЫТЫЕ СЕКЦИИ
     const summaryCards = document.querySelector('.summary-cards');
     const chartsSection = document.querySelector('.charts-section');
@@ -387,33 +401,48 @@ function displayUserStats(statsData) {
     let totalCalls = 0;
     let totalComments = 0;
     let totalTasks = 0;
+    let totalMeetings = 0;
 
+    // Считаем общую статистику
     statsData.user_stats.forEach(user => {
         totalCalls += user.calls || 0;
         totalComments += user.comments || 0;
         totalTasks += user.tasks || 0;
+        totalMeetings += user.meetings || 0;
     });
 
+    // Обновляем summary cards
     document.getElementById('activeUsers').textContent = statsData.active_users || 0;
     document.getElementById('totalActivities').textContent = statsData.total_activities || 0;
     document.getElementById('totalCalls').textContent = totalCalls;
     document.getElementById('totalComments').textContent = totalComments;
+    
+    // Добавляем среднее в день
+    const periodDays = statsData.period_days || 7;
+    const avgPerDay = statsData.total_activities ? Math.round(statsData.total_activities / periodDays) : 0;
+    document.getElementById('avgPerDay').textContent = avgPerDay;
 
+    // Обновляем графики если есть статистика
     if (statsData.statistics) {
+        console.log('📈 Updating charts with statistics:', statsData.statistics);
         ActivityCharts.updateAllCharts(statsData.statistics);
+    } else {
+        console.log('⚠️ No statistics data available');
     }
 
     const tbody = document.getElementById('resultsBody');
 
     if (statsData.user_stats.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="loading">Нет данных</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Нет данных за выбранный период</td></tr>';
         return;
     }
 
     tbody.innerHTML = '';
     
+    // Очищаем предыдущие данные
     currentUserStats = {};
     
+    // Заполняем таблицу
     statsData.user_stats.forEach(user => {
         currentUserStats[user.user_id] = user;
         
@@ -424,6 +453,7 @@ function displayUserStats(statsData) {
             <td><span class="activity-badge badge-call">${user.calls || 0}</span></td>
             <td><span class="activity-badge badge-comment">${user.comments || 0}</span></td>
             <td><span class="activity-badge badge-task">${user.tasks || 0}</span></td>
+            <td><span class="activity-badge badge-meeting">${user.meetings || 0}</span></td>
             <td><strong>${user.total || 0}</strong></td>
             <td>${user.last_activity_date || 'Нет данных'}</td>
             <td><button class="quick-btn" onclick="showUserDetails('${user.user_id}')">Детали</button></td>
@@ -431,7 +461,7 @@ function displayUserStats(statsData) {
         tbody.appendChild(row);
     });
 
-    console.log('✅ User stats saved for details:', Object.keys(currentUserStats));
+    console.log('✅ User stats displayed successfully');
 }
 
 function updateUserSelect() {

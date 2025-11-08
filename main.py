@@ -165,6 +165,9 @@ async def get_detailed_stats(
                 } if start_date and end_date else None
             }
         
+        # ОГРАНИЧИВАЕМ КОЛИЧЕСТВО АКТИВНОСТЕЙ ДЛЯ КАЖДОГО ПОЛЬЗОВАТЕЛЯ
+        MAX_ACTIVITIES_PER_USER = 300  # Максимум 300 активностей на пользователя
+        
         # Обрабатываем статистику по пользователям
         user_stats = []
         user_activities = {}
@@ -173,7 +176,9 @@ async def get_detailed_stats(
             user_id = activity['AUTHOR_ID']
             if user_id not in user_activities:
                 user_activities[user_id] = []
-            user_activities[user_id].append(activity)
+            # Добавляем только если не превышен лимит
+            if len(user_activities[user_id]) < MAX_ACTIVITIES_PER_USER:
+                user_activities[user_id].append(activity)
         
         # Получаем информацию о пользователях
         presales_users = await bitrix_service.get_presales_users()
@@ -213,7 +218,7 @@ async def get_detailed_stats(
                 "total": total,
                 "days_count": len(activity_dates),
                 "last_activity_date": last_activity.strftime('%Y-%m-%d %H:%M') if last_activity else "Нет данных",
-                "activities": user_acts
+                "activities": user_acts  # Теперь здесь только ограниченное количество
             })
         
         total_activities = len(activities)
@@ -240,6 +245,7 @@ async def get_detailed_stats(
             )
             result["statistics"] = statistics
         
+        logger.info(f"✅ Returning stats: {len(user_stats)} users, {total_activities} total activities")
         return result
         
     except Exception as e:
