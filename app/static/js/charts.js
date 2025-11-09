@@ -17,7 +17,7 @@ class ActivityCharts {
         this.charts.dailyActivity = this.createDailyActivityChart();
         this.charts.comparison = this.createComparisonChart();
 
-        console.log('✅ Charts initialized successfully');
+        console.log('✅ All charts initialized successfully');
     }
 
     static createWeekActivityChart() {
@@ -217,6 +217,8 @@ class ActivityCharts {
 
     static createComparisonChart() {
         const ctx = document.getElementById('comparisonChart').getContext('2d');
+        console.log('📊 Creating comparison chart...');
+        
         return new Chart(ctx, {
             type: 'bar',
             data: {
@@ -355,11 +357,20 @@ class ActivityCharts {
     }
 
     static updateComparisonChart(userStats) {
-        if (!this.charts.comparison || !userStats || userStats.length <= 1) {
+        console.log('🔄 updateComparisonChart called with:', userStats);
+        
+        if (!this.charts.comparison) {
+            console.log('❌ Comparison chart not initialized');
+            return;
+        }
+
+        const chartContainer = document.getElementById('comparisonChartContainer');
+        
+        if (!userStats || userStats.length <= 1) {
             // Скрываем график если выбран только один сотрудник
-            const chartContainer = document.getElementById('comparisonChartContainer');
             if (chartContainer) {
-                chartContainer.style.display = userStats && userStats.length > 1 ? 'block' : 'none';
+                chartContainer.style.display = 'none';
+                console.log('📊 Comparison chart hidden (only 1 user or no users)');
             }
             return;
         }
@@ -370,6 +381,14 @@ class ActivityCharts {
         const tasksData = userStats.map(user => user.tasks || 0);
         const meetingsData = userStats.map(user => user.meetings || 0);
 
+        console.log('📊 Comparison data:', {
+            labels,
+            callsData,
+            commentsData,
+            tasksData,
+            meetingsData
+        });
+
         this.charts.comparison.data.labels = labels;
         this.charts.comparison.data.datasets[0].data = callsData;
         this.charts.comparison.data.datasets[1].data = commentsData;
@@ -378,7 +397,13 @@ class ActivityCharts {
         
         this.charts.comparison.update();
 
-        console.log('📊 Comparison chart updated with', userStats.length, 'users');
+        // Показываем контейнер
+        if (chartContainer) {
+            chartContainer.style.display = 'block';
+            console.log('📊 Comparison chart container shown');
+        }
+
+        console.log('✅ Comparison chart updated with', userStats.length, 'users');
     }
 
     static destroyCharts() {

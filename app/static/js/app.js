@@ -1,4 +1,4 @@
-// app.js - ИСПРАВЛЕННАЯ ВЕРСИЯ ДЛЯ МУЛЬТИВЫБОРА С ЧЕКБОКСАМИ
+// app.js - ИСПРАВЛЕННАЯ ВЕРСИЯ С ОДНИМ ДНЕМ ПО УМОЛЧАНИЮ
 
 const ACTIVITY_TYPES = {
     "1": { name: "Встреча", class: "badge-meeting" },
@@ -47,14 +47,12 @@ async function setDefaultDatesWithRetry(maxAttempts = 10) {
         const start = document.getElementById('startDate');
         const end = document.getElementById('endDate');
         if (start && end) {
+            // Устанавливаем сегодняшний день как начальную и конечную дату
             const today = new Date();
-            const day = today.getDay();
-            const monday = new Date(today);
-            monday.setDate(today.getDate() - (day === 0 ? 6 : day - 1));
             const fmt = d => d.toISOString().split('T')[0];
-            start.value = fmt(monday);
+            start.value = fmt(today);
             end.value = fmt(today);
-            console.log('✅ Default dates set to current week');
+            console.log('✅ Default dates set to today only');
             return;
         }
         await new Promise(r => setTimeout(r, 300));
@@ -219,6 +217,7 @@ function displayUserStats(statsData) {
     }
     
     // ОБНОВЛЯЕМ ГРАФИК СРАВНЕНИЯ
+    console.log('📊 Displaying stats for', statsData.user_stats.length, 'users');
     ActivityCharts.updateComparisonChart(statsData.user_stats);
 }
 
@@ -261,7 +260,7 @@ function renderUserCheckboxes() {
         const div = document.createElement('div');
         div.className = 'checkbox-item';
         div.innerHTML = `
-            <input type="checkbox" id="user_${user.ID}" value="${user.ID}" class="user-checkbox">
+            <input type="checkbox" id="user_${user.ID}" value="${user.ID}" class="user-checkbox" checked>
             <label for="user_${user.ID}">${user.NAME} ${user.LAST_NAME}</label>
         `;
         container.appendChild(div);
@@ -457,6 +456,17 @@ function logout() {
     }
     showLoginPrompt();
     alert('✅ Вы вышли из системы');
+}
+
+// Функции для переключения форм авторизации
+function showLogin() {
+    document.getElementById('loginForm').style.display = 'block';
+    document.getElementById('registerForm').style.display = 'none';
+}
+
+function showRegister() {
+    document.getElementById('loginForm').style.display = 'none';
+    document.getElementById('registerForm').style.display = 'block';
 }
 
 console.log('✅ app.js loaded');
