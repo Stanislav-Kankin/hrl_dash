@@ -298,21 +298,17 @@ async function loadUsersList() {
 async function applyFilters() {
     try {
         console.log('🔄 applyFilters called...');
-
         if (!BitrixAPI.authToken || !currentUser) {
             showLoginPrompt();
             return;
-
         }
 
         showLoading('resultsBody', 'Загрузка данных...');
 
-        // 🔴 ИСПРАВЛЕНИЕ: ОБЪЯВЛЯЕМ ПЕРЕМЕННЫЕ
         const employeesSelect = document.getElementById('employeesSelect');
         const activityTypeSelect = document.getElementById('activityTypeSelect');
         const startDateInput = document.getElementById('startDate');
         const endDateInput = document.getElementById('endDate');
-
 
         console.log('🔍 Element status in applyFilters:', {
             employeesSelect: !!employeesSelect,
@@ -321,24 +317,20 @@ async function applyFilters() {
             endDateInput: !!endDateInput
         });
 
-        // Проверяем что все элементы существуют
         if (!employeesSelect || !activityTypeSelect || !startDateInput || !endDateInput) {
             throw new Error('Form elements not found');
         }
 
-        // Получаем значения фильтров
         const employeeFilter = employeesSelect.value;
         const activityTypeFilter = activityTypeSelect.value;
         const startDate = startDateInput.value;
         const endDate = endDateInput.value;
 
-        // Валидация дат
         if (!startDate || !endDate) {
             alert('❌ Пожалуйста, выберите диапазон дат');
             return;
         }
 
-        // Подготавливаем фильтры для API
         const filters = {
             user_ids: employeeFilter === 'all' ? [] : [employeeFilter],
             activity_type: activityTypeFilter === 'all' ? null : activityTypeFilter,
@@ -347,25 +339,19 @@ async function applyFilters() {
         };
 
         console.log('🔍 Sending filters:', filters);
+
         const statsData = await BitrixAPI.getDetailedStats(filters);
-
         console.log('🔍 Raw stats data:', statsData);
-        console.log('🔍 Activities by user:', statsData.user_stats.map(u => ({
-            user: u.user_name,
-            total: u.total,
-            calls: u.calls,
-            comments: u.comments
-        })));
 
-        if (statsData) {
+        if (statsData && statsData.success) {
             displayUserStats(statsData);
+        } else {
+            showError('resultsBody', statsData?.error || 'Неизвестная ошибка сервера');
         }
-
     } catch (error) {
         console.error('Error applying filters:', error);
         showError('resultsBody', `Ошибка: ${error.message}`);
     }
-
 }
 
 // Функция для повторной попытки
@@ -376,7 +362,6 @@ window.retryApplyFilters = function () {
 
 function displayUserStats(statsData) {
     console.log('📊 Displaying user stats:', statsData);
-
     if (!statsData || !statsData.user_stats) {
         showError('resultsBody', 'Нет данных для отображения');
         return;
@@ -384,13 +369,13 @@ function displayUserStats(statsData) {
 
     const summaryCards = document.querySelector('.summary-cards');
     const chartsSection = document.querySelector('.charts-section');
-
     if (summaryCards) summaryCards.style.display = 'grid';
     if (chartsSection) chartsSection.style.display = 'block';
 
+    // Сортируем по общему количеству активностей (по убыванию)
     const sortedUserStats = [...statsData.user_stats].sort((a, b) => (b.total || 0) - (a.total || 0));
-    const tbody = document.getElementById('resultsBody');
 
+    const tbody = document.getElementById('resultsBody');
     if (sortedUserStats.length === 0) {
         tbody.innerHTML = '<tr><td colspan="8" class="loading">Нет данных за выбранный период</td></tr>';
         return;
@@ -402,19 +387,26 @@ function displayUserStats(statsData) {
     sortedUserStats.forEach(user => {
         currentUserStats[user.user_id] = user;
         const row = document.createElement('tr');
+        // Исправлено: переставлены столбцы в соответствии с таблицей
         row.innerHTML = `
             <td class="employee-name">${user.user_name}</td>
             <td>${user.days_count || 0}</td>
             <td><span class="activity-badge badge-call">${user.calls || 0}</span></td>
             <td><span class="activity-badge badge-comment">${user.comments || 0}</span></td>
             <td><span class="activity-badge badge-task">${user.tasks || 0}</span></td>
-            <td><span class="activity-badge badge-meeting">${user.meetings || 0}</span></td>
             <td><strong>${user.total || 0}</strong></td>
             <td>${user.last_activity_date || 'Нет данных'}</td>
             <td><button class="quick-btn" onclick="showUserDetails('${user.user_id}')">Детали</button></td>
         `;
         tbody.appendChild(row);
     });
+
+    // === ОБНОВЛЕНИЕ ГРАФИКОВ ===
+    if (statsData.statistics) {
+        ActivityCharts.updateAllCharts(statsData.statistics);
+    } else {
+        console.warn('⚠️ No statistics in response — graphs will not update');
+    }
 
     console.log('✅ User stats displayed successfully');
 }
@@ -887,3 +879,10 @@ window.addAllowedEmail = async function () {
         }
     }
 };
+
+// Обновляем графики, если есть статистика
+if (statsData.statistics) {
+    ActivityCharts.updateAllCharts(statsData.statistics);
+} else {
+    console.warn('⚠️ No statistics in response — cannot update charts');
+}
