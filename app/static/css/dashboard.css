@@ -292,34 +292,93 @@ tr:hover {
 .badge-task { background: #e8f5e8; color: #388e3c; }
 .badge-meeting { background: #fff3e0; color: #f57c00; }
 
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: #6c757d;
+}
+
+/* === Панель детализации активностей === */
 .details-panel {
-    margin-top: 20px;
-    padding: 20px;
-    background: #f8f9fa;
-    border-radius: 8px;
-    display: none;
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 100%;
+    max-width: 800px;
+    height: 100vh;
+    background: white;
+    box-shadow: -5px 0 20px rgba(0, 0, 0, 0.15);
+    z-index: 1001;
+    transform: translateX(100%);
+    transition: transform 0.3s ease, visibility 0.3s;
+    visibility: hidden;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .details-panel.active {
-    display: block;
+    transform: translateX(0);
+    visibility: visible;
+}
+
+.details-header {
+    background: linear-gradient(135deg, #2c3e50, #34495e);
+    color: white;
+    padding: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.details-header h3 {
+    margin: 0;
+    font-size: 1.3em;
+    font-weight: 600;
+}
+
+.details-header button {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.details-header button:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.details-content {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    background: #f9fafb;
 }
 
 .day-group {
-    margin-bottom: 15px;
-    padding: 15px;
+    margin-bottom: 20px;
+    padding: 16px;
     background: white;
     border-radius: 8px;
     border-left: 4px solid #667eea;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
 .day-header {
     font-weight: 600;
-    margin-bottom: 10px;
+    font-size: 1.1em;
     color: #2c3e50;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #eee;
 }
 
 .activity-item {
-    padding: 8px 0;
+    padding: 10px 0;
     border-bottom: 1px solid #f1f3f4;
 }
 
@@ -327,23 +386,54 @@ tr:hover {
     border-bottom: none;
 }
 
+.activity-line {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+
 .activity-time {
     font-weight: 600;
     color: #495057;
-    margin-right: 10px;
+    min-width: 70px;
+    font-size: 0.9em;
 }
 
 .activity-type {
     font-size: 0.8em;
-    padding: 2px 6px;
-    border-radius: 4px;
-    margin-right: 8px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    min-width: 90px;
+    text-align: center;
 }
 
-.loading {
+.activity-description {
+    color: #555;
+    font-size: 0.95em;
+    line-height: 1.5;
+    word-wrap: break-word;
+    background: #f8f9fa;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    white-space: pre-wrap;
+    width: 100%;
+    box-sizing: border-box;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.loading, .error {
+    padding: 30px;
     text-align: center;
-    padding: 40px;
     color: #6c757d;
+}
+
+.error {
+    color: #e74c3c;
 }
 
 /* Адаптивность */
@@ -351,19 +441,15 @@ tr:hover {
     .charts-row {
         grid-template-columns: 1fr;
     }
-    
     .summary-cards {
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     }
-    
     .filter-group {
         gap: 15px;
     }
-    
     .filter-item {
         min-width: 180px;
     }
-    
     #customDateRange {
         min-width: 280px;
     }
@@ -373,15 +459,12 @@ tr:hover {
     .filter-group {
         flex-direction: column;
     }
-    
     .filter-item {
         min-width: 100%;
     }
-    
     #customDateRange {
         min-width: 100%;
     }
-    
     .apply-btn, .clear-btn {
         width: 100%;
         margin-top: 10px;
@@ -392,38 +475,42 @@ tr:hover {
     .summary-cards {
         grid-template-columns: 1fr 1fr;
     }
-    
     .charts-row {
         grid-template-columns: 1fr;
     }
-    
     table {
         font-size: 0.9em;
     }
-    
     .quick-buttons {
         justify-content: center;
     }
-    
     .quick-btn {
         padding: 8px 16px;
         font-size: 0.9em;
     }
-    
     .header h1 {
         font-size: 2em;
     }
-    
     body {
         padding: 10px;
     }
-    
     .filters-section {
         padding: 20px;
     }
-    
     .results-section {
         padding: 20px;
+    }
+    .details-panel {
+        max-width: 100%;
+        width: 100%;
+    }
+    .activity-line {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+    }
+    .activity-time, .activity-type {
+        min-width: auto;
     }
 }
 
@@ -431,68 +518,53 @@ tr:hover {
     .summary-cards {
         grid-template-columns: 1fr;
     }
-    
     .filter-group {
         gap: 10px;
     }
-    
     #customDateRange .date-range-inputs {
         flex-direction: column;
         gap: 8px;
     }
-    
     #customDateRange .date-range-separator {
         display: none;
     }
-    
     .quick-buttons {
         flex-direction: column;
         align-items: stretch;
     }
-    
     .quick-btn {
         text-align: center;
     }
-    
     .chart-container {
         padding: 15px;
     }
-    
     .header {
         padding: 20px;
     }
-    
     .header h1 {
         font-size: 1.8em;
     }
 }
 
-/* Специальные стили для мобильных устройств */
 @media (max-width: 480px) {
     .dashboard {
         border-radius: 10px;
     }
-    
     .filters-section {
         padding: 15px;
     }
-    
     .results-section {
         padding: 15px;
     }
-    
     .summary-card {
         padding: 20px;
     }
-    
     .summary-card .value {
         font-size: 1.8em;
     }
-    
     th, td {
         padding: 10px 8px;
     }
-    
     .activity-badge {
         padding: 3px 6px;
         font-size: 0.75em;
@@ -519,95 +591,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     flex-direction: column;
 }
 
-/* Гарантируем что кнопки не будут перекрывать контент */
-.apply-btn, .clear-btn {
-    align-self: flex-end;
-    height: fit-content;
-}
-
-/* Добавьте в конец dashboard.css */
-.details-panel {
-    margin-top: 20px;
-    padding: 0;
-    background: #f8f9fa;
-    border-radius: 8px;
-    display: none;
-    border: 1px solid #e9ecef;
-}
-
-.details-panel.active {
-    display: block;
-}
-
-.details-header {
-    background: linear-gradient(135deg, #2c3e50, #34495e);
-    color: white;
-    padding: 20px;
-    border-radius: 8px 8px 0 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.details-header h3 {
-    margin: 0;
-    font-size: 1.2em;
-}
-
-.details-content {
-    padding: 20px;
-    max-height: 500px;
-    overflow-y: auto;
-}
-
-.day-group {
-    margin-bottom: 20px;
-    padding: 15px;
-    background: white;
-    border-radius: 8px;
-    border-left: 4px solid #667eea;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.day-header {
-    font-weight: 600;
-    margin-bottom: 12px;
-    color: #2c3e50;
-    font-size: 1.1em;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #e9ecef;
-}
-
-.activity-item {
-    padding: 10px;
-    border-bottom: 1px solid #f1f3f4;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.activity-item:last-child {
-    border-bottom: none;
-}
-
-.activity-time {
-    font-weight: 600;
-    color: #495057;
-    min-width: 80px;
-    font-size: 0.9em;
-}
-
-.activity-type {
-    font-size: 0.8em;
-    padding: 4px 8px;
-    border-radius: 12px;
-    font-weight: 600;
-    min-width: 100px;
-    text-align: center;
-}
-
-.activity-description {
-    flex: 1;
-    color: #6c757d;
-    font-size: 0.9em;
+.filter-item > label {
+    margin-bottom: 8px;
 }

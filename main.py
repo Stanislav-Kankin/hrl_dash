@@ -155,7 +155,17 @@ async def get_detailed_stats(
         
         # Получаем ВСЕХ пресейл-сотрудников для статистики
         presales_users = await bitrix_service.get_presales_users()
-        user_info_map = {user['ID']: user for user in presales_users}
+        user_info_map = {str(user['ID']): user for user in presales_users}  # ВАЖНО: приводим ID к строке
+        
+        logger.info(f"📊 User info map keys: {list(user_info_map.keys())}")
+        
+        # ДИАГНОСТИКА: посмотрим распределение активностей по пользователям
+        if activities:
+            author_distribution = {}
+            for activity in activities:
+                author_id = str(activity.get('AUTHOR_ID', 'unknown'))
+                author_distribution[author_id] = author_distribution.get(author_id, 0) + 1
+            logger.info(f"🔍 Activity distribution by author: {author_distribution}")
         
         if not activities:
             # Возвращаем ВСЕХ пользователей даже если нет активностей
@@ -172,7 +182,7 @@ async def get_detailed_stats(
                     "days_count": 0,
                     "last_activity_date": "Нет данных"
                 })
-            
+
             return {
                 "success": True,
                 "user_stats": user_stats,
@@ -188,10 +198,12 @@ async def get_detailed_stats(
         # Группируем активности по пользователям
         user_activities = {}
         for activity in activities:
-            user_id = str(activity['AUTHOR_ID'])
+            user_id = str(activity['AUTHOR_ID'])  # ВАЖНО: приводим к строке
             if user_id not in user_activities:
                 user_activities[user_id] = []
             user_activities[user_id].append(activity)
+        
+        logger.info(f"📊 Users with activities: {list(user_activities.keys())}")
         
         # Создаем статистику для ВСЕХ пресейл-сотрудников
         user_stats = []
@@ -351,21 +363,25 @@ async def find_users(current_user: dict = Depends(get_current_user)):
         
         found_users = []
         for user in all_users:
-            full_name = f"{user.get('NAME', '')} {user.get('LAST_NAME', '')}"
+            full_name = f"{user.get('NAME', '')} {user.get('LAST_NAME', '')}".strip()
             for target_name in target_names:
-                if target_name.lower() in full_name.lower():
+                # Более гибкое сравнение
+                if (target_name.lower() in full_name.lower() or 
+                    full_name.lower() in target_name.lower()):
                     found_users.append({
                         "ID": user['ID'],
                         "NAME": user.get('NAME', ''),
                         "LAST_NAME": user.get('LAST_NAME', ''),
                         "WORK_POSITION": user.get('WORK_POSITION', ''),
-                        "FULL_NAME": full_name
+                        "FULL_NAME": full_name,
+                        "EMAIL": user.get('EMAIL', '')
                     })
                     break
         
         return {
             "target_names": target_names,
             "found_users": found_users,
+            "total_users": len(all_users),
             "message": f"Найдено {len(found_users)} из {len(target_names)} сотрудников"
         }
         
@@ -382,22 +398,46 @@ async def get_user_activities(
 ):
     """Получить активности конкретного пользователя (для детализации)"""
     try:
+        logger.info(f"🔍 Getting activities for user {user_id}, dates: {start_date} to {end_date}")
+        
         activities = await bitrix_service.get_activities(
             start_date=start_date,
             end_date=end_date,
             user_ids=[user_id]
         )
         
-        return {
+        logger.info(f"✅ Found {len(activities) if activities else 0} activities for user {user_id}")
+        
+        # Ограничиваем и форматируем ответ чтобы избежать ошибки размера
+        formatted_activities = []
+        if activities:
+            for activity in activities[:200]:  # Ограничиваем до 200 записей для теста
+                formatted_activity = {
+                    "ID": activity.get("ID"),
+                    "CREATED": activity.get("CREATED"),
+                    "AUTHOR_ID": activity.get("AUTHOR_ID"),
+                    "TYPE_ID": activity.get("TYPE_ID"),
+                    "DESCRIPTION": (activity.get("DESCRIPTION") or "")[:200],  # Ограничиваем длину описания
+                    "SUBJECT": activity.get("SUBJECT"),
+                    "PROVIDER_ID": activity.get("PROVIDER_ID")
+                }
+                formatted_activities.append(formatted_activity)
+        
+        response_data = {
             "success": True,
             "user_id": user_id,
-            "activities": activities or []
+            "activities_count": len(activities) if activities else 0,
+            "activities_returned": len(formatted_activities),
+            "activities": formatted_activities
         }
         
+        logger.info(f"📊 Response prepared: {len(formatted_activities)} activities")
+        return response_data
+        
     except Exception as e:
-        logger.error(f"Error getting user activities: {str(e)}")
+        logger.error(f"❌ Error getting user activities: {str(e)}")
         return {"success": False, "error": str(e)}
-
+    
 # Админ эндпоинты для управления белым списком
 @app.get("/api/admin/allowed-emails")
 async def get_allowed_emails(current_user: dict = Depends(get_current_admin)):
@@ -415,6 +455,84 @@ async def remove_allowed_email(request: EmailRequest, current_user: dict = Depen
     """Удалить email из белого списка"""
     auth_service.remove_allowed_email(request.email)
     return {"message": f"Email {request.email} удален из разрешенных"}
+
+@app.get("/api/debug/activity-distribution")
+async def debug_activity_distribution(
+    start_date: str = "2025-10-09",
+    end_date: str = "2025-11-08"
+):
+    """Отладочный эндпоинт для проверки распределения активностей"""
+    try:
+        activities = await bitrix_service.get_activities(
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        if not activities:
+            return {"error": "No activities found"}
+        
+        # Анализируем распределение по авторам
+        distribution = {}
+        for activity in activities:
+            author_id = str(activity.get('AUTHOR_ID', 'unknown'))
+            
+            if author_id not in distribution:
+                distribution[author_id] = {
+                    "count": 0,
+                    "types": {},
+                    "last_activity": None
+                }
+            
+            distribution[author_id]["count"] += 1
+            
+            # Типы активностей
+            type_id = activity.get('TYPE_ID', 'unknown')
+            distribution[author_id]["types"][type_id] = distribution[author_id]["types"].get(type_id, 0) + 1
+            
+            # Последняя активность
+            created = activity.get('CREATED')
+            if created:
+                activity_date = datetime.fromisoformat(created.replace('Z', '+00:00'))
+                if not distribution[author_id]["last_activity"] or activity_date > distribution[author_id]["last_activity"]:
+                    distribution[author_id]["last_activity"] = activity_date
+        
+        return {
+            "total_activities": len(activities),
+            "distribution": distribution,
+            "sample_activity": activities[0] if activities else None
+        }
+        
+    except Exception as e:
+        logger.error(f"Debug error: {str(e)}")
+        return {"error": str(e)}
+    
+@app.get("/api/debug/presales-users")
+async def debug_presales_users():
+    """Отладочный эндпоинт для проверки пресейл пользователей"""
+    try:
+        presales_users = await bitrix_service.get_presales_users()
+        
+        if not presales_users:
+            return {"error": "No presales users found"}
+        
+        users_info = []
+        for user in presales_users:
+            users_info.append({
+                "id": user.get('ID'),
+                "name": f"{user.get('NAME', '')} {user.get('LAST_NAME', '')}",
+                "email": user.get('EMAIL'),
+                "position": user.get('WORK_POSITION'),
+                "active": user.get('ACTIVE')
+            })
+        
+        return {
+            "total_presales_users": len(presales_users),
+            "users": users_info
+        }
+        
+    except Exception as e:
+        logger.error(f"Debug presales error: {str(e)}")
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn

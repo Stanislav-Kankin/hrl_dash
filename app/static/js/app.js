@@ -114,25 +114,36 @@ async function setDefaultDatesWithRetry(maxAttempts = 15) {
         try {
             const startDateEl = document.getElementById('startDate');
             const endDateEl = document.getElementById('endDate');
-
             if (startDateEl && endDateEl) {
-                const startDate = new Date();
-                startDate.setDate(startDate.getDate() - 30);
-                const endDate = new Date();
+                const today = new Date();
+                const dayOfWeek = today.getDay(); // 0 = воскресенье, 1 = понедельник, ..., 6 = суббота
+                // Считаем понедельник текущей недели
+                const monday = new Date(today);
+                // В JavaScript: воскресенье = 0 → понедельник = 1, ..., суббота = 6
+                // Нам нужно: если сегодня воскресенье (0), то вычесть 6 дней → пн = today - 6
+                // Если понедельник (1) → вычесть 0
+                // Формула: вычесть (dayOfWeek === 0 ? 6 : dayOfWeek - 1)
+                const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                monday.setDate(today.getDate() - daysToSubtract);
 
-                startDateEl.value = startDate.toISOString().split('T')[0];
-                endDateEl.value = endDate.toISOString().split('T')[0];
-                console.log('✅ Default dates set');
+                // Формат: YYYY-MM-DD
+                const format = d => d.toISOString().split('T')[0];
+
+                startDateEl.value = format(monday);
+                endDateEl.value = format(today);
+
+                console.log('✅ Default dates set to current week:', {
+                    start: startDateEl.value,
+                    end: endDateEl.value
+                });
                 return;
             }
         } catch (error) {
             console.warn(`⚠️ Date setting attempt ${attempt} failed:`, error);
         }
-
         console.log(`⏳ Waiting for date elements... attempt ${attempt}/${maxAttempts}`);
         await new Promise(resolve => setTimeout(resolve, 300));
     }
-
     console.warn('⚠️ Could not set default dates, continuing anyway...');
 }
 
@@ -251,14 +262,34 @@ async function loadUsersList() {
     try {
         showLoading('resultsBody', 'Загрузка сотрудников...');
         const data = await BitrixAPI.getUsersList();
-
-        if (data.users) {
+        if (data.users && data.users.length > 0) {
             allUsers = data.users;
-            updateUserSelect();
+        } else {
+            // РЕЗЕРВ: жёстко заданные пользователи на случай, если API не ответил
+            console.warn('⚠️ Users list empty, using fallback presales list');
+            allUsers = [
+                { ID: '8860', NAME: 'Безина', LAST_NAME: 'Ольга', WORK_POSITION: 'Пресейл' },
+                { ID: '8988', NAME: 'Фатюхина', LAST_NAME: 'Полина', WORK_POSITION: 'Пресейл' },
+                { ID: '17087', NAME: 'Агапова', LAST_NAME: 'Анастасия', WORK_POSITION: 'Пресейл' },
+                { ID: '17919', NAME: 'Некрасова', LAST_NAME: 'Елена', WORK_POSITION: 'Пресейл' },
+                { ID: '17395', NAME: 'Вахрушева', LAST_NAME: 'Наталия', WORK_POSITION: 'Пресейл' },
+                { ID: '18065', NAME: 'Прокофьева', LAST_NAME: 'Дарья', WORK_POSITION: 'Пресейл' }
+            ];
         }
+        updateUserSelect();
     } catch (error) {
         console.error('Ошибка загрузки сотрудников:', error);
-        showError('resultsBody', `Ошибка: ${error.message}`);
+        // Даже при ошибке — показываем fallback
+        allUsers = [
+            { ID: '8860', NAME: 'Безина', LAST_NAME: 'Ольга' },
+            { ID: '8988', NAME: 'Фатюхина', LAST_NAME: 'Полина' },
+            { ID: '17087', NAME: 'Агапова', LAST_NAME: 'Анастасия' },
+            { ID: '17919', NAME: 'Некрасова', LAST_NAME: 'Елена' },
+            { ID: '17395', NAME: 'Вахрушева', LAST_NAME: 'Наталия' },
+            { ID: '18065', NAME: 'Прокофьева', LAST_NAME: 'Дарья' }
+        ];
+        updateUserSelect();
+        showError('resultsBody', `Ошибка загрузки сотрудников: ${error.message}`);
     }
 }
 
@@ -533,65 +564,75 @@ function logout() {
 // ФУНКЦИЯ ДЕТАЛИЗАЦИИ
 window.showUserDetails = async function (userId) {
     console.log('🔍 Showing details for user:', userId);
-
     const userStats = currentUserStats[userId];
     if (!userStats) {
         alert('❌ Данные пользователя не найдены');
         return;
     }
-
     const panel = document.getElementById('detailsPanel');
     if (!panel) {
         console.error('❌ Details panel not found');
         return;
     }
 
-    panel.innerHTML = '<div class="loading">Загрузка деталей...</div>';
+    // Показываем панель и ставим загрузку
     panel.classList.add('active');
+    panel.innerHTML = `
+        <div class="details-header">
+            <h3>📋 Детализация активностей: <span id="detailUserName"></span></h3>
+            <button onclick="closeDetailsPanel()">✕ Закрыть</button>
+        </div>
+        <div class="details-content">
+            <div class="loading">Загрузка деталей...</div>
+        </div>
+    `;
+    document.getElementById('detailUserName').textContent = userStats.user_name;
+
+    // Закрытие по Esc
+    const closeOnEsc = (e) => {
+        if (e.key === 'Escape') closeDetailsPanel();
+    };
+    document.addEventListener('keydown', closeOnEsc);
+    panel._escHandler = closeOnEsc;
 
     try {
-        const startDateInput = document.getElementById('startDate');
-        const endDateInput = document.getElementById('endDate');
+        const startDate = getElementValueSafely('startDate');
+        const endDate = getElementValueSafely('endDate');
 
-        if (!startDateInput || !endDateInput) {
-            throw new Error('Date elements not found');
-        }
-
-        // 🔴 ИСПРАВЛЕНИЕ: используем BitrixAPI для запроса
-        const response = await BitrixAPI.makeRequest(`/api/user-activities/${userId}?${new URLSearchParams({
-            start_date: startDateInput.value,
-            end_date: endDateInput.value
-        })}`);
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
+        const response = await BitrixAPI.makeRequest(
+            `/api/user-activities/${encodeURIComponent(userId)}?start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`
+        );
 
         const data = await response.json();
-
         if (!data.success) {
-            throw new Error(data.error || 'Ошибка загрузки данных');
+            throw new Error(data.error || 'Неизвестная ошибка API');
         }
 
         const activities = data.activities || [];
         const activitiesByDay = {};
 
-        if (activities && activities.length > 0) {
+        if (activities.length > 0) {
             activities.forEach(activity => {
                 try {
                     const activityDate = new Date(activity.CREATED.replace('Z', '+00:00'));
                     const dateKey = activityDate.toISOString().split('T')[0];
-
                     if (!activitiesByDay[dateKey]) {
                         activitiesByDay[dateKey] = [];
                     }
+                    // ОБРАБАТЫВАЕМ ОПИСАНИЕ: УДАЛЯЕМ ТЕГИ И ЗАМЕНЯЕМ <br> НА \n
+                    let description = activity.DESCRIPTION || activity.SUBJECT || 'Без описания';
+                    // Заменяем <br> и <br/> на перенос строки
+                    description = description.replace(/<br\s*\/?>/gi, '\n');
+                    // Удаляем все остальные теги
+                    description = description.replace(/<[^>]*>/g, '');
+                    // Убираем лишние пробелы и переносы
+                    description = description.trim().replace(/\s+/g, ' ');
 
                     activitiesByDay[dateKey].push({
-                        time: activityDate.toLocaleTimeString('ru-RU'),
+                        time: activityDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
                         type: ACTIVITY_TYPES[activity.TYPE_ID]?.name || 'Другое',
                         type_class: ACTIVITY_TYPES[activity.TYPE_ID]?.class || 'badge-task',
-                        description: activity.DESCRIPTION || activity.SUBJECT || 'Без описания',
-                        type_id: activity.TYPE_ID
+                        description: description
                     });
                 } catch (e) {
                     console.error('Error processing activity:', activity, e);
@@ -600,20 +641,20 @@ window.showUserDetails = async function (userId) {
         }
 
         const sortedDays = Object.keys(activitiesByDay).sort().reverse();
-
-        let html = `
-            <div class="details-header">
-                <h3>📋 Детализация активностей: ${userStats.user_name}</h3>
-                <button class="quick-btn" onclick="document.getElementById('detailsPanel').classList.remove('active')">✕ Закрыть</button>
-            </div>
-            <div class="details-content">
-        `;
+        let contentHtml = '';
 
         if (sortedDays.length === 0) {
-            html += `<div class="loading">Нет данных об активностях</div>`;
+            contentHtml = '<div class="loading">Нет активностей за выбранный период</div>';
         } else {
+            contentHtml = `
+                <div style="margin-bottom: 15px; padding: 12px; background: #e7f3ff; border-radius: 6px; font-size: 0.95em;">
+                    <strong>Всего активностей:</strong> ${data.activities_count} |
+                    <strong>Отображено:</strong> ${data.activities_returned}
+                </div>
+            `;
+
             sortedDays.forEach(day => {
-                const activities = activitiesByDay[day];
+                const acts = activitiesByDay[day];
                 const date = new Date(day);
                 const dayName = date.toLocaleDateString('ru-RU', {
                     weekday: 'long',
@@ -622,33 +663,66 @@ window.showUserDetails = async function (userId) {
                     day: 'numeric'
                 });
 
-                html += `
+                contentHtml += `
                     <div class="day-group">
-                        <div class="day-header">📅 ${dayName} (${activities.length} активностей)</div>
+                        <div class="day-header">📅 ${dayName} (${acts.length})</div>
                 `;
 
-                activities.forEach(activity => {
-                    html += `
+                acts.forEach(act => {
+                    // Экранируем описание (на случай, если там есть & < >)
+                    const safeDesc = escapeHtml(act.description);
+                    contentHtml += `
                         <div class="activity-item">
-                            <span class="activity-time">${activity.time}</span>
-                            <span class="activity-type ${activity.type_class}">${activity.type}</span>
-                            <span class="activity-description">${activity.description}</span>
+                            <div class="activity-line">
+                                <span class="activity-time">${act.time}</span>
+                                <span class="activity-type ${act.type_class}">${act.type}</span>
+                            </div>
+                            <div class="activity-description">${safeDesc}</div>
                         </div>
                     `;
                 });
 
-                html += `</div>`;
+                contentHtml += `</div>`;
             });
         }
 
-        html += `</div>`;
-        panel.innerHTML = html;
-
-        console.log('✅ Details panel updated for user:', userId);
+        const contentDiv = panel.querySelector('.details-content');
+        if (contentDiv) {
+            contentDiv.innerHTML = contentHtml;
+        }
 
     } catch (error) {
-        console.error('❌ Error loading user details:', error);
-        panel.innerHTML = `<div class="error">Ошибка загрузки деталей: ${error.message}</div>`;
+        console.error('❌ Error in showUserDetails:', error);
+        const contentDiv = panel.querySelector('.details-content');
+        if (contentDiv) {
+            contentDiv.innerHTML = `<div class="error">Ошибка загрузки: ${escapeHtml(error.message)}</div>`;
+        }
+    }
+};
+
+// Вспомогательная функция закрытия
+window.closeDetailsPanel = function () {
+    const panel = document.getElementById('detailsPanel');
+    if (panel) {
+        panel.classList.remove('active');
+        // Удаляем обработчик Esc
+        if (panel._escHandler) {
+            document.removeEventListener('keydown', panel._escHandler);
+            panel._escHandler = null;
+        }
+    }
+};
+
+// Вспомогательная функция закрытия
+window.closeDetailsPanel = function () {
+    const panel = document.getElementById('detailsPanel');
+    if (panel) {
+        panel.classList.remove('active');
+        // Удаляем обработчик Esc
+        if (panel._escHandler) {
+            document.removeEventListener('keydown', panel._escHandler);
+            panel._escHandler = null;
+        }
     }
 };
 
