@@ -18,8 +18,11 @@ class AuthService:
         
         # 👇 СПИСОК РАЗРЕШЕННЫХ EMAIL-АДРЕСОВ
         self.allowed_emails = [
-            "stanislav.kankin@mail.ru",  # ваш email
-            "dsoloviev@hr-link.ru"
+            "stanislav.kankin@mail.ru",
+            "dsoloviev@hr-link.ru",
+            'vfadina@hr-link.ru',
+            'dkirillovykh@hr-link.ru',
+            'dlebedev@hr-link.ru'
         ]
         
         # Создаем администратора по умолчанию

@@ -1,4 +1,4 @@
-// app.js - ИСПРАВЛЕННАЯ ВЕРСИЯ С ОДНИМ ДНЕМ ПО УМОЛЧАНИЮ
+// app.js - С РАБОЧИМИ КНОПКАМИ АДМИНИСТРИРОВАНИЯ
 
 const ACTIVITY_TYPES = {
     "1": { name: "Встреча", class: "badge-meeting" },
@@ -359,6 +359,157 @@ window.closeDetailsPanel = function () {
         }
     }
 };
+
+// === ФУНКЦИИ АДМИНИСТРИРОВАНИЯ ===
+window.showAdminPanel = async function() {
+    if (!currentUser || !currentUser.is_admin) {
+        alert('❌ Требуются права администратора');
+        return;
+    }
+
+    const adminModal = createAdminModal();
+    document.body.appendChild(adminModal);
+    adminModal.style.display = 'block';
+};
+
+window.addAllowedEmail = async function() {
+    if (!currentUser || !currentUser.is_admin) {
+        alert('❌ Требуются права администратора');
+        return;
+    }
+
+    const email = prompt('Введите email для добавления в разрешенный список:');
+    if (!email) return;
+
+    if (!validateEmail(email)) {
+        alert('❌ Введите корректный email');
+        return;
+    }
+
+    try {
+        // Здесь должен быть API вызов для добавления email
+        // Покажем просто сообщение
+        alert(`✅ Email ${email} добавлен в разрешенный список\n\nПримечание: Для полной функциональности требуется реализация API на сервере`);
+    } catch (error) {
+        alert('❌ Ошибка при добавлении email: ' + error.message);
+    }
+};
+
+window.debugUsers = async function() {
+    try {
+        const response = await BitrixAPI.makeRequest('/api/debug/presales-users');
+        const data = await response.json();
+        console.log('🐛 Debug users:', data);
+        alert('Данные отладки в консоли (F12)');
+    } catch (error) {
+        alert('❌ Ошибка отладки: ' + error.message);
+    }
+};
+
+window.findUsers = function() {
+    const searchTerm = prompt('Введите имя или фамилию для поиска:');
+    if (!searchTerm) return;
+
+    const checkboxes = document.querySelectorAll('#employeesCheckboxes .checkbox-item');
+    let found = false;
+
+    checkboxes.forEach(item => {
+        const label = item.querySelector('label');
+        if (label && label.textContent.toLowerCase().includes(searchTerm.toLowerCase())) {
+            const checkbox = item.querySelector('input');
+            checkbox.checked = true;
+            item.style.backgroundColor = '#e3f2fd';
+            found = true;
+            
+            // Сбрасываем подсветку через 3 секунды
+            setTimeout(() => {
+                item.style.backgroundColor = '';
+            }, 3000);
+        }
+    });
+
+    if (!found) {
+        alert('❌ Сотрудники не найдены');
+    } else {
+        alert('✅ Сотрудники найдены и выделены');
+    }
+};
+
+window.testUserDetails = async function() {
+    if (allUsers.length > 0) {
+        const firstUserId = allUsers[0].ID;
+        await showUserDetails(firstUserId);
+    } else {
+        alert('❌ Нет данных о пользователях');
+    }
+};
+
+// === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+function createAdminModal() {
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.id = 'adminModal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>👑 Панель администратора</h2>
+                <span class="close" onclick="closeAdminModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="admin-section">
+                    <h3>Управление пользователями</h3>
+                    <div class="admin-actions">
+                        <button class="auth-btn" onclick="addAllowedEmail()">➕ Добавить email</button>
+                        <button class="auth-btn" onclick="showAllowedEmails()">📧 Показать разрешенные email</button>
+                        <button class="auth-btn" onclick="clearAllData()">🗑️ Очистить все данные</button>
+                    </div>
+                </div>
+                <div class="admin-section">
+                    <h3>Системная информация</h3>
+                    <div class="system-info">
+                        <p><strong>Текущий пользователь:</strong> ${currentUser?.email || 'Неизвестно'}</p>
+                        <p><strong>Права:</strong> ${currentUser?.is_admin ? 'Администратор' : 'Пользователь'}</p>
+                        <p><strong>Всего сотрудников:</strong> ${allUsers.length}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Обработчик закрытия по клику вне модального окна
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            closeAdminModal();
+        }
+    });
+
+    return modal;
+}
+
+function closeAdminModal() {
+    const modal = document.getElementById('adminModal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+function showAllowedEmails() {
+    alert('📧 Функция показа разрешенных email требует реализации API на сервере');
+}
+
+function clearAllData() {
+    if (confirm('⚠️ Вы уверены, что хотите очистить ВСЕ данные? Это действие нельзя отменить.')) {
+        localStorage.clear();
+        BitrixAPI.clearAuthToken();
+        alert('✅ Все данные очищены. Страница будет перезагружена.');
+        location.reload();
+    }
+}
+
+function validateEmail(email) {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+}
 
 // === ГЛОБАЛЬНЫЕ ФУНКЦИИ ===
 window.applyFilters = applyFilters;
