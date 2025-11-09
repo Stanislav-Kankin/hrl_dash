@@ -244,6 +244,11 @@ body {
     max-height: 300px;
 }
 
+/* Стили для графика сравнения */
+#comparisonChartContainer {
+    grid-column: 1 / -1; /* Занимает всю ширину */
+}
+
 .table-container {
     background: white;
     border-radius: 12px;
@@ -477,6 +482,9 @@ tr:hover {
     }
     .charts-row {
         grid-template-columns: 1fr;
+    }
+    #comparisonChartContainer {
+        grid-column: 1;
     }
     table {
         font-size: 0.9em;

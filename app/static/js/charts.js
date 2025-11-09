@@ -15,6 +15,7 @@ class ActivityCharts {
         this.charts.hourActivity = this.createHourActivityChart();
         this.charts.typeDistribution = this.createTypeDistributionChart();
         this.charts.dailyActivity = this.createDailyActivityChart();
+        this.charts.comparison = this.createComparisonChart();
 
         console.log('✅ Charts initialized successfully');
     }
@@ -214,6 +215,74 @@ class ActivityCharts {
         });
     }
 
+    static createComparisonChart() {
+        const ctx = document.getElementById('comparisonChart').getContext('2d');
+        return new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Звонки',
+                        data: [],
+                        backgroundColor: 'rgba(54, 162, 235, 0.8)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Комментарии',
+                        data: [],
+                        backgroundColor: 'rgba(75, 192, 192, 0.8)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Задачи',
+                        data: [],
+                        backgroundColor: 'rgba(255, 206, 86, 0.8)',
+                        borderColor: 'rgba(255, 206, 86, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Встречи',
+                        data: [],
+                        backgroundColor: 'rgba(255, 99, 132, 0.8)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Сравнение активности сотрудников'
+                    },
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Сотрудники'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Количество активностей'
+                        },
+                        stacked: false
+                    }
+                }
+            }
+        });
+    }
+
     static updateAllCharts(statistics) {
         if (!statistics) {
             console.log('No statistics provided for charts');
@@ -283,6 +352,33 @@ class ActivityCharts {
             this.charts.dailyActivity.data.datasets[0].data = dailyData;
             this.charts.dailyActivity.update();
         }
+    }
+
+    static updateComparisonChart(userStats) {
+        if (!this.charts.comparison || !userStats || userStats.length <= 1) {
+            // Скрываем график если выбран только один сотрудник
+            const chartContainer = document.getElementById('comparisonChartContainer');
+            if (chartContainer) {
+                chartContainer.style.display = userStats && userStats.length > 1 ? 'block' : 'none';
+            }
+            return;
+        }
+
+        const labels = userStats.map(user => user.user_name);
+        const callsData = userStats.map(user => user.calls || 0);
+        const commentsData = userStats.map(user => user.comments || 0);
+        const tasksData = userStats.map(user => user.tasks || 0);
+        const meetingsData = userStats.map(user => user.meetings || 0);
+
+        this.charts.comparison.data.labels = labels;
+        this.charts.comparison.data.datasets[0].data = callsData;
+        this.charts.comparison.data.datasets[1].data = commentsData;
+        this.charts.comparison.data.datasets[2].data = tasksData;
+        this.charts.comparison.data.datasets[3].data = meetingsData;
+        
+        this.charts.comparison.update();
+
+        console.log('📊 Comparison chart updated with', userStats.length, 'users');
     }
 
     static destroyCharts() {

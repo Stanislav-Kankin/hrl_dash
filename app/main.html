@@ -16,7 +16,7 @@
             cursor: pointer;
             backdrop-filter: blur(10px);
         ">🔐 ВОЙТИ В ДАШБОРД</button>
-    <link rel="icon" href="/hrl_dash/favicon.ico" type="image/png">
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -125,6 +125,13 @@
                     <div class="chart-container">
                         <h3>📅 Активность по дням</h3>
                         <canvas id="dailyActivityChart"></canvas>
+                    </div>
+                </div>
+                <!-- Новый график сравнения сотрудников -->
+                <div class="charts-row">
+                    <div class="chart-container" id="comparisonChartContainer" style="display: none;">
+                        <h3>📊 Сравнение сотрудников</h3>
+                        <canvas id="comparisonChart"></canvas>
                     </div>
                 </div>
             </div>

@@ -155,6 +155,10 @@ async def test_connection():
         logger.error(f"Connection test error: {str(e)}")
         return {"connected": False, "error": str(e)}
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(os.path.join(os.path.dirname(__file__), "favicon.ico"))
+
 @app.get("/api/debug/presales-users")
 async def debug_presales_users():
     try:

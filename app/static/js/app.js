@@ -213,9 +213,13 @@ function displayUserStats(statsData) {
         tbody.appendChild(row);
     });
 
+    // Обновляем все графики
     if (statsData.statistics) {
         ActivityCharts.updateAllCharts(statsData.statistics);
     }
+    
+    // ОБНОВЛЯЕМ ГРАФИК СРАВНЕНИЯ
+    ActivityCharts.updateComparisonChart(statsData.user_stats);
 }
 
 async function loadUsersList() {
