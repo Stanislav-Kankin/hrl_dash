@@ -4,16 +4,16 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 import logging
 import asyncio
+import hashlib
 
 logger = logging.getLogger(__name__)
-
 
 class BitrixService:
     def __init__(self):
         self.webhook_url = os.getenv("BITRIX_WEBHOOK_URL")
         self.session = None
         self._cache = {}
-        self._cache_ttl = 30  # кэш 30 секунд вместо 10 — меньше запросов
+        self._cache_ttl = 30  # кэш 30 секунд
 
     async def ensure_session(self):
         """Создает сессию если её нет"""
@@ -35,17 +35,29 @@ class BitrixService:
 
         await self.ensure_session()
         url = f"{self.webhook_url}/{method}"
+        
+        # 🔥 Логируем параметры запроса
+        logger.info(f"🔍 Bitrix API Request: {method}")
+        logger.info(f"🔍 URL: {url}")
+        if params:
+            logger.info(f"🔍 Params keys: {list(params.keys())}")
+            if 'filter[AUTHOR_ID]' in params:
+                logger.info(f"🔍 AUTHOR_ID filter: {params['filter[AUTHOR_ID]']}")
+        
         try:
             async with self.session.get(url, params=params) as response:
+                logger.info(f"🔍 Response status: {response.status}")
                 if response.status == 200:
                     data = await response.json()
                     if 'result' in data:
+                        logger.info(f"🔍 Bitrix API Success: got {len(data['result'])} results")
                         return data['result']
                     elif 'error' in data:
                         logger.error(f"Bitrix API error: {data['error']}")
                         return None
                 else:
-                    logger.error(f"HTTP error {response.status} for {url}")
+                    error_text = await response.text()
+                    logger.error(f"HTTP error {response.status} for {url}: {error_text}")
                     return None
         except asyncio.TimeoutError:
             logger.error(f"Timeout error for method {method}")
@@ -62,18 +74,6 @@ class BitrixService:
         except Exception as e:
             logger.error(f"Connection test failed: {str(e)}")
             return False
-
-    async def get_users(self, only_active: bool = True) -> Optional[List[Dict]]:
-        """Получает список пользователей"""
-        try:
-            params = {}
-            if only_active:
-                params['ACTIVE'] = 'true'
-            users = await self.make_bitrix_request("user.get", params)
-            return users
-        except Exception as e:
-            logger.error(f"Error getting users: {str(e)}")
-            return None
 
     async def get_user_by_id(self, user_id: str) -> Optional[Dict]:
         """Получить пользователя по ID"""
@@ -94,7 +94,6 @@ class BitrixService:
                 if (datetime.now() - cache_time).total_seconds() < self._cache_ttl:
                     return cached_data
 
-            # Жестко заданные ID пресейл-сотрудников
             known_presales_ids = ['8860', '8988', '17087', '17919', '17395', '18065']
             presales_users = []
             for user_id in known_presales_ids:
@@ -119,16 +118,6 @@ class BitrixService:
         activity_types: List[str] = None
     ) -> Optional[List[Dict]]:
         try:
-            # Формируем ключ кэша
-            user_key = "-".join(sorted(user_ids)) if user_ids else "all"
-            type_key = "-".join(sorted(activity_types)) if activity_types else "all"
-            cache_key = f"activities_{start_date}_{end_date}_{user_key}_{type_key}"
-            if cache_key in self._cache:
-                cache_time, cached_data = self._cache[cache_key]
-                if cached_data is not None and (datetime.now() - cache_time).total_seconds() < self._cache_ttl:
-                    logger.info(f"Using cached activities ({len(cached_data)} items)")
-                    return cached_data
-
             # Определяем диапазон дат
             if start_date and end_date:
                 start_date_obj = datetime.fromisoformat(start_date)
@@ -139,7 +128,6 @@ class BitrixService:
                 end_date_obj = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
                 start_date_obj = (end_date_obj - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
             else:
-                # По умолчанию — 30 дней
                 end_date_obj = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
                 start_date_obj = (end_date_obj - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -155,45 +143,85 @@ class BitrixService:
                 if presales:
                     final_user_ids = [str(user["ID"]) for user in presales]
 
+            logger.info(f"🔍 get_activities: user_ids={final_user_ids}, start_date={start_date_str}, end_date={end_date_str}")
+
+            # 🔥 ИСПРАВЛЕНИЕ: делаем отдельные запросы для каждого пользователя
             all_activities = []
-            start = 0
-            request_count = 0
-            max_requests = 50  # на случай большого объёма
+            
+            if final_user_ids:
+                for user_id in final_user_ids:
+                    user_activities = await self._get_activities_for_single_user(
+                        user_id, start_date_str, end_date_str, activity_types
+                    )
+                    if user_activities:
+                        all_activities.extend(user_activities)
+                        logger.info(f"🔍 User {user_id}: got {len(user_activities)} activities")
 
-            while request_count < max_requests:
-                params = {
-                    'filter[>=CREATED]': start_date_str,
-                    'filter[<=CREATED]': end_date_str,
-                    'start': start,
-                    'order[CREATED]': 'DESC',
-                    'select[]': ['ID', 'CREATED', 'AUTHOR_ID', 'DESCRIPTION', 'TYPE_ID', 'SUBJECT', 'PROVIDER_ID']
-                }
+            # 🔥 ДИАГНОСТИКА: логируем финальные результаты
+            logger.info(f"📊 FINAL ACTIVITIES COUNT: {len(all_activities)}")
+            logger.info(f"📊 User IDs requested: {user_ids}")
+            logger.info(f"📊 Date range: {start_date_str} to {end_date_str}")
 
-                if final_user_ids:
-                    params['filter[AUTHOR_ID]'] = final_user_ids
-                if activity_types:
-                    params['filter[TYPE_ID]'] = activity_types
+            # Проверим распределение по пользователям
+            if all_activities:
+                user_distribution = {}
+                for act in all_activities:
+                    user_id = str(act.get('AUTHOR_ID', ''))
+                    user_distribution[user_id] = user_distribution.get(user_id, 0) + 1
+                logger.info(f"📊 Activities by user: {user_distribution}")
+            else:
+                logger.info("📊 No activities found")
 
-                activities = await self.make_bitrix_request("crm.activity.list", params)
-                if activities is None:
-                    break
-                if not activities:
-                    break
-
-                all_activities.extend(activities)
-                if len(activities) < 50:
-                    break
-
-                start += 50
-                request_count += 1
-                await asyncio.sleep(0.1)
-
-            self._cache[cache_key] = (datetime.now(), all_activities)
             return all_activities
 
         except Exception as e:
             logger.error(f"Error in get_activities: {str(e)}")
             return None
+        
+    async def _get_activities_for_single_user(
+        self, 
+        user_id: str, 
+        start_date_str: str, 
+        end_date_str: str, 
+        activity_types: List[str] = None
+    ) -> List[Dict]:
+        """Получает активности для одного пользователя"""
+        user_activities = []
+        start = 0
+        request_count = 0
+        max_requests = 10  # Ограничим для безопасности
+
+        while request_count < max_requests:
+            params = {
+                'filter[>=CREATED]': start_date_str,
+                'filter[<=CREATED]': end_date_str,
+                'filter[AUTHOR_ID]': user_id,
+                'start': start,
+                'order[CREATED]': 'DESC',
+                'select[]': ['ID', 'CREATED', 'AUTHOR_ID', 'DESCRIPTION', 'TYPE_ID', 'SUBJECT', 'PROVIDER_ID']
+            }
+
+            if activity_types:
+                params['filter[TYPE_ID]'] = activity_types
+
+            activities = await self.make_bitrix_request("crm.activity.list", params)
+            if activities is None:
+                break
+            if not activities:
+                break
+
+            user_activities.extend(activities)
+            logger.info(f"🔍 User {user_id} - Batch {request_count + 1}: got {len(activities)} activities, total: {len(user_activities)}")
+
+            if len(activities) < 50:
+                logger.info(f"🔍 User {user_id} - Last batch had {len(activities)} items, stopping pagination.")
+                break
+
+            start += 50
+            request_count += 1
+            await asyncio.sleep(0.1)  # Небольшая пауза между запросами
+
+        return user_activities
 
     async def get_activity_statistics(
         self,

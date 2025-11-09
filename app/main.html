@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="ru">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -21,23 +20,20 @@
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-
 <body>
     <div class="dashboard">
         <div class="header">
             <h1>📊 Bitrix24 Analytics Dashboard</h1>
             <p>Дашборд для анализа активности сотрудников</p>
         </div>
-
         <div class="filters-section">
             <div class="filter-group">
                 <div class="filter-item">
                     <label>Сотрудники:</label>
-                    <select id="employeesSelect">
-                        <option value="all">Все сотрудники</option>
-                    </select>
+                    <div id="employeesCheckboxes" class="checkbox-group">
+                        <!-- Чекбоксы будут загружены автоматически -->
+                    </div>
                 </div>
-
                 <div class="filter-item" id="customDateRange">
                     <label>Диапазон дат:</label>
                     <div class="date-range-inputs">
@@ -46,7 +42,6 @@
                         <input type="date" id="endDate">
                     </div>
                 </div>
-
                 <div class="filter-item">
                     <label>Тип активности:</label>
                     <select id="activityTypeSelect">
@@ -57,7 +52,6 @@
                         <option value="1">Встречи</option>
                     </select>
                 </div>
-
                 <div class="filter-item" style="min-width: auto;">
                     <label style="visibility: hidden;">Действия</label>
                     <div style="display: flex; gap: 10px;">
@@ -67,7 +61,6 @@
                 </div>
             </div>
         </div>
-
         <div class="quick-actions">
             <div class="quick-buttons">
                 <button class="quick-btn" onclick="testConnection()">Тест подключения</button>
@@ -75,12 +68,10 @@
                 <button class="quick-btn" onclick="findUsers()">🔍 Поиск</button>
                 <button class="quick-btn" onclick="showAdminPanel()">👑 Админ</button>
                 <button class="quick-btn" onclick="addAllowedEmail()">➕ Добавить email</button>
-                <button class="quick-btn" onclick="localStorage.removeItem('auth_token'); location.reload();">🔄
+                <button class="quick-btn" onclick="localStorage.removeItem('auth_token'); location.reload();">🔄 Сбросить авторизацию</button>
                 <button class="quick-btn" onclick="testUserDetails()">🧪 Тест детализации</button>
-                    Сбросить авторизацию</button>
             </div>
         </div>
-
         <div class="results-section">
             <div class="summary-cards">
                 <div class="summary-card">
@@ -114,7 +105,6 @@
                     <div class="subtext">день недели</div>
                 </div>
             </div>
-
             <!-- Секция графиков -->
             <div class="charts-section">
                 <div class="charts-row">
@@ -138,7 +128,6 @@
                     </div>
                 </div>
             </div>
-
             <div class="table-container">
                 <table id="resultsTable">
                     <thead>
@@ -160,13 +149,11 @@
                     </tbody>
                 </table>
             </div>
-
             <div class="details-panel" id="detailsPanel">
                 <!-- Детализация будет загружаться здесь -->
             </div>
         </div>
     </div>
-
     <div id="authModal" class="modal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -189,7 +176,6 @@
                     </form>
                     <p>Нет аккаунта? <a href="#" onclick="showRegister()">Зарегистрироваться</a></p>
                 </div>
-
                 <div id="registerForm" style="display: none;">
                     <h3>Регистрация</h3>
                     <form onsubmit="return register(event)">
@@ -212,18 +198,36 @@
             </div>
         </div>
     </div>
-
     <style>
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            max-height: 120px;
+            overflow-y: auto;
+            padding: 8px;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            background: white;
+        }
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+        .checkbox-item input {
+            margin: 0;
+        }
         .modal {
             position: fixed;
-            z-index: 1000;
+            z-index:1000;
             left: 0;
             top: 0;
             width: 100%;
             height: 100%;
             background-color: rgba(0, 0, 0, 0.5);
         }
-
         .modal-content {
             background-color: white;
             margin: 10% auto;
@@ -233,7 +237,6 @@
             max-width: 90%;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
         }
-
         .modal-header {
             background: linear-gradient(135deg, #2c3e50, #34495e);
             color: white;
@@ -243,38 +246,31 @@
             justify-content: space-between;
             align-items: center;
         }
-
         .modal-header h2 {
             margin: 0;
             font-size: 1.5em;
         }
-
         .close {
             color: white;
             font-size: 28px;
             font-weight: bold;
             cursor: pointer;
         }
-
         .close:hover {
             color: #ccc;
         }
-
         .modal-body {
             padding: 30px;
         }
-
         .form-group {
             margin-bottom: 20px;
         }
-
         .form-group label {
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
             color: #495057;
         }
-
         .form-group input {
             width: 100%;
             padding: 12px;
@@ -283,12 +279,10 @@
             font-size: 14px;
             transition: border-color 0.3s;
         }
-
         .form-group input:focus {
             border-color: #667eea;
             outline: none;
         }
-
         .auth-btn {
             width: 100%;
             background: linear-gradient(135deg, #667eea, #764ba2);
@@ -301,25 +295,20 @@
             font-weight: 600;
             transition: transform 0.2s;
         }
-
         .auth-btn:hover {
             transform: translateY(-2px);
         }
-
         .modal-body p {
             text-align: center;
             margin-top: 20px;
         }
-
         .modal-body a {
             color: #667eea;
             text-decoration: none;
         }
-
         .modal-body a:hover {
             text-decoration: underline;
         }
-
         /* Индикатор загрузки */
         .loading-overlay {
             position: fixed;
@@ -334,7 +323,6 @@
             z-index: 9999;
             backdrop-filter: blur(5px);
         }
-
         .loading-spinner {
             background: white;
             padding: 30px;
@@ -342,7 +330,6 @@
             text-align: center;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
         }
-
         .spinner {
             width: 40px;
             height: 40px;
@@ -352,12 +339,10 @@
             animation: spin 1s linear infinite;
             margin: 0 auto 15px;
         }
-
         @keyframes spin {
             0% {
                 transform: rotate(0deg);
             }
-
             100% {
                 transform: rotate(360deg);
             }
@@ -370,23 +355,19 @@
             <div id="loadingText">Загрузка данных...</div>
         </div>
     </div>
-
     <script src="/static/js/api.js"></script>
     <script src="/static/js/charts.js"></script>
     <script src="/static/js/app.js"></script>
-
     <script>
         console.log('🔍 DEBUG: Checking DOM elements before app.js loads...');
-        const checkElements = ['employeesSelect', 'activityTypeSelect', 'startDate', 'endDate'];
+        const checkElements = ['employeesCheckboxes', 'activityTypeSelect', 'startDate', 'endDate'];
         checkElements.forEach(id => {
             const el = document.getElementById(id);
             console.log(`🔍 ${id}:`, el ? 'FOUND' : 'NOT FOUND', el);
         });
-
         // Проверим всю структуру
         console.log('🔍 Full filters section:', document.querySelector('.filters-section'));
         console.log('🔍 All inputs in filters:', document.querySelectorAll('.filters-section input, .filters-section select'));
     </script>
 </body>
-
 </html>
