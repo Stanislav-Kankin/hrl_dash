@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bitrix24 Analytics Dashboard</title>
     <script>
-        const buildDate = "2025.11.10.1.33"; // Формат: ГГГГ.ММ.ДД.ВЕРСИЯ
+        const buildDate = "2025.11.10.1.34"; // Формат: ГГГГ.ММ.ДД.ВЕРСИЯ
     </script>
 
     <button id="authButton" onclick="showAuthModal()" style="
@@ -74,7 +74,7 @@
                 <button class="quick-btn" onclick="addAllowedEmail()">➕ Добавить email</button>
                 <button class="quick-btn" onclick="localStorage.removeItem('auth_token'); location.reload();">🔄
                     Сбросить авторизацию</button>
-                <button class="quick-btn" onclick="showVersion()">ℹ️ Версия ${buildDate}</button>
+                <button class="quick-btn" onclick="showVersion()">ℹ️ Версия</button>
             </div>
         </div>
         <div class="results-section">
