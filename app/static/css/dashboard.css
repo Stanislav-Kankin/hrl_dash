@@ -214,16 +214,12 @@ body {
     margin-top: 5px;
 }
 
-/* Стили для секции графиков */
+/* Стили для секции графиков - ВЕРТИКАЛЬНОЕ РАСПОЛОЖЕНИЕ */
 .charts-section {
     margin-bottom: 30px;
-}
-
-.charts-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 20px;
-    margin-bottom: 20px;
 }
 
 .chart-container {
@@ -242,11 +238,12 @@ body {
 
 .chart-container canvas {
     max-height: 300px;
+    width: 100% !important;
 }
 
 /* Стили для графика сравнения */
 #comparisonChartContainer {
-    grid-column: 1 / -1; /* Занимает всю ширину */
+    width: 100%;
 }
 
 .table-container {
@@ -254,6 +251,7 @@ body {
     border-radius: 12px;
     box-shadow: 0 5px 15px rgba(0,0,0,0.08);
     overflow: hidden;
+    margin-top: 20px;
 }
 
 table {
@@ -441,11 +439,45 @@ tr:hover {
     color: #e74c3c;
 }
 
+/* Стили для админ-панели */
+.admin-section {
+    margin-bottom: 25px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+}
+
+.admin-section h3 {
+    margin-bottom: 15px;
+    color: #2c3e50;
+    font-size: 1.1em;
+}
+
+.admin-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.admin-actions .auth-btn {
+    margin-bottom: 0;
+}
+
+.system-info {
+    background: white;
+    padding: 15px;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+}
+
+.system-info p {
+    margin: 8px 0;
+    color: #495057;
+}
+
 /* Адаптивность */
 @media (max-width: 1200px) {
-    .charts-row {
-        grid-template-columns: 1fr;
-    }
     .summary-cards {
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     }
@@ -474,20 +506,18 @@ tr:hover {
         width: 100%;
         margin-top: 10px;
     }
+    .admin-actions {
+        flex-direction: column;
+    }
+    
+    .admin-section {
+        padding: 15px;
+    }
 }
 
 @media (max-width: 768px) {
     .summary-cards {
         grid-template-columns: 1fr 1fr;
-    }
-    .charts-row {
-        grid-template-columns: 1fr;
-    }
-    #comparisonChartContainer {
-        grid-column: 1;
-    }
-    table {
-        font-size: 0.9em;
     }
     .quick-buttons {
         justify-content: center;
@@ -520,6 +550,9 @@ tr:hover {
     .activity-time, .activity-type {
         min-width: auto;
     }
+    .chart-container {
+        padding: 15px;
+    }
 }
 
 @media (max-width: 576px) {
@@ -542,9 +575,6 @@ tr:hover {
     }
     .quick-btn {
         text-align: center;
-    }
-    .chart-container {
-        padding: 15px;
     }
     .header {
         padding: 20px;
@@ -601,54 +631,4 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 .filter-item > label {
     margin-bottom: 8px;
-}
-
-/* Добавьте в конец файла dashboard.css */
-
-/* Стили для админ-панели */
-.admin-section {
-    margin-bottom: 25px;
-    padding: 20px;
-    background: #f8f9fa;
-    border-radius: 8px;
-    border-left: 4px solid #667eea;
-}
-
-.admin-section h3 {
-    margin-bottom: 15px;
-    color: #2c3e50;
-    font-size: 1.1em;
-}
-
-.admin-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.admin-actions .auth-btn {
-    margin-bottom: 0;
-}
-
-.system-info {
-    background: white;
-    padding: 15px;
-    border-radius: 6px;
-    border: 1px solid #e9ecef;
-}
-
-.system-info p {
-    margin: 8px 0;
-    color: #495057;
-}
-
-/* Адаптивность для админ-панели */
-@media (max-width: 768px) {
-    .admin-actions {
-        flex-direction: column;
-    }
-    
-    .admin-section {
-        padding: 15px;
-    }
 }

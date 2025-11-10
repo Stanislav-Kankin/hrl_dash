@@ -120,16 +120,7 @@ class BitrixAPI {
         return await response.json();
     }
 
-    static async debugUsers() {
-        const response = await this.makeRequest('/api/debug/users');
-        return await response.json();
-    }
-
-    static async findUsers() {
-        const response = await this.makeRequest('/api/find-users');
-        return await response.json();
-    }
-
+    // Административные функции
     static async getAllowedEmails() {
         const response = await this.makeRequest('/api/admin/allowed-emails');
         return await response.json();
@@ -145,9 +136,14 @@ class BitrixAPI {
 
     static async removeAllowedEmail(email) {
         const response = await this.makeRequest('/api/admin/remove-allowed-email', {
-            method: 'POST',
+            method: 'DELETE',
             body: JSON.stringify({ email })
         });
+        return await response.json();
+    }
+
+    static async getUsersCount() {
+        const response = await this.makeRequest('/api/admin/users-count');
         return await response.json();
     }
 }

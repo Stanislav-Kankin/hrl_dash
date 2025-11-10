@@ -14,7 +14,6 @@ class ActivityCharts {
         this.charts.weekActivity = this.createWeekActivityChart();
         this.charts.hourActivity = this.createHourActivityChart();
         this.charts.typeDistribution = this.createTypeDistributionChart();
-        this.charts.dailyActivity = this.createDailyActivityChart();
         this.charts.comparison = this.createComparisonChart();
 
         console.log('✅ All charts initialized successfully');
@@ -161,60 +160,6 @@ class ActivityCharts {
         });
     }
 
-    static createDailyActivityChart() {
-        const ctx = document.getElementById('dailyActivityChart').getContext('2d');
-        return new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Активности по дням',
-                    data: [],
-                    backgroundColor: 'rgba(102, 126, 234, 0.2)',
-                    borderColor: 'rgba(102, 126, 234, 1)',
-                    borderWidth: 2,
-                    tension: 0.4,
-                    fill: true,
-                    pointBackgroundColor: 'rgba(102, 126, 234, 1)',
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 2,
-                    pointRadius: 4,
-                    pointHoverRadius: 6
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: {
-                        display: false
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function (context) {
-                                return `Активностей: ${context.parsed.y}`;
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        title: {
-                            display: true,
-                            text: 'Даты'
-                        }
-                    },
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Количество активностей'
-                        }
-                    }
-                }
-            }
-        });
-    }
-
     static createComparisonChart() {
         const ctx = document.getElementById('comparisonChart').getContext('2d');
         console.log('📊 Creating comparison chart...');
@@ -337,22 +282,6 @@ class ActivityCharts {
 
             this.charts.typeDistribution.data.datasets[0].data = typeData;
             this.charts.typeDistribution.update();
-        }
-
-        // Обновляем график по дням
-        if (this.charts.dailyActivity && statistics.daily_stats) {
-            const dailyLabels = statistics.daily_stats.map(day => {
-                const date = new Date(day.date);
-                return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-            });
-            const dailyData = statistics.daily_stats.map(day => day.total);
-
-            console.log('Daily labels:', dailyLabels);
-            console.log('Daily data:', dailyData);
-
-            this.charts.dailyActivity.data.labels = dailyLabels;
-            this.charts.dailyActivity.data.datasets[0].data = dailyData;
-            this.charts.dailyActivity.update();
         }
     }
 

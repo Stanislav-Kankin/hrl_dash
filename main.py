@@ -212,6 +212,44 @@ async def login(user_data: UserLogin):
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
     return current_user
 
+# Административные эндпоинты
+@app.get("/api/admin/allowed-emails")
+async def get_allowed_emails(current_user: dict = Depends(get_current_admin)):
+    try:
+        emails = auth_service.get_allowed_emails()
+        return {"success": True, "emails": emails}
+    except Exception as e:
+        logger.error(f"Error getting allowed emails: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/admin/add-allowed-email")
+async def add_allowed_email(request: EmailRequest, current_user: dict = Depends(get_current_admin)):
+    try:
+        auth_service.add_allowed_email(request.email)
+        return {"success": True, "message": f"Email {request.email} added to allowed list"}
+    except Exception as e:
+        logger.error(f"Error adding allowed email: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.delete("/api/admin/remove-allowed-email")
+async def remove_allowed_email(request: EmailRequest, current_user: dict = Depends(get_current_admin)):
+    try:
+        auth_service.remove_allowed_email(request.email)
+        return {"success": True, "message": f"Email {request.email} removed from allowed list"}
+    except Exception as e:
+        logger.error(f"Error removing allowed email: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/admin/users-count")
+async def get_users_count(current_user: dict = Depends(get_current_admin)):
+    try:
+        users = await bitrix_service.get_presales_users()
+        count = len(users) if users else 0
+        return {"success": True, "count": count}
+    except Exception as e:
+        logger.error(f"Error getting users count: {str(e)}")
+        return {"success": False, "error": str(e)}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

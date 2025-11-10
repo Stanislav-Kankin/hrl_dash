@@ -64,12 +64,9 @@
         <div class="quick-actions">
             <div class="quick-buttons">
                 <button class="quick-btn" onclick="testConnection()">Тест подключения</button>
-                <button class="quick-btn" onclick="debugUsers()">🐛 Отладка</button>
-                <button class="quick-btn" onclick="findUsers()">🔍 Поиск</button>
                 <button class="quick-btn" onclick="showAdminPanel()">👑 Админ</button>
                 <button class="quick-btn" onclick="addAllowedEmail()">➕ Добавить email</button>
                 <button class="quick-btn" onclick="localStorage.removeItem('auth_token'); location.reload();">🔄 Сбросить авторизацию</button>
-                <button class="quick-btn" onclick="testUserDetails()">🧪 Тест детализации</button>
             </div>
         </div>
         <div class="results-section">
@@ -107,32 +104,22 @@
             </div>
             <!-- Секция графиков -->
             <div class="charts-section">
-                <div class="charts-row">
-                    <div class="chart-container">
-                        <h3>📈 Активность по дням недели</h3>
-                        <canvas id="weekActivityChart"></canvas>
-                    </div>
-                    <div class="chart-container">
-                        <h3>🕒 Активность по часам</h3>
-                        <canvas id="hourActivityChart"></canvas>
-                    </div>
+                <div class="chart-container">
+                    <h3>📈 Активность по дням недели</h3>
+                    <canvas id="weekActivityChart"></canvas>
                 </div>
-                <div class="charts-row">
-                    <div class="chart-container">
-                        <h3>📊 Распределение по типам</h3>
-                        <canvas id="typeDistributionChart"></canvas>
-                    </div>
-                    <div class="chart-container">
-                        <h3>📅 Активность по дням</h3>
-                        <canvas id="dailyActivityChart"></canvas>
-                    </div>
+                <div class="chart-container">
+                    <h3>🕒 Активность по часам</h3>
+                    <canvas id="hourActivityChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>📊 Распределение по типам</h3>
+                    <canvas id="typeDistributionChart"></canvas>
                 </div>
                 <!-- Новый график сравнения сотрудников -->
-                <div class="charts-row">
-                    <div class="chart-container" id="comparisonChartContainer" style="display: none;">
-                        <h3>📊 Сравнение сотрудников</h3>
-                        <canvas id="comparisonChart"></canvas>
-                    </div>
+                <div class="chart-container" id="comparisonChartContainer" style="display: none;">
+                    <h3>📊 Сравнение сотрудников</h3>
+                    <canvas id="comparisonChart"></canvas>
                 </div>
             </div>
             <div class="table-container">

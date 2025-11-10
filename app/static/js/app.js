@@ -176,6 +176,8 @@ async function applyFilters() {
         const statsData = await BitrixAPI.getDetailedStats(filters);
         if (statsData && statsData.success) {
             displayUserStats(statsData);
+            // 🔥 ОБНОВЛЯЕМ КАРТОЧКИ С ДАННЫМИ
+            updateSummaryCards(statsData, startDate, endDate);
         } else {
             showError('resultsBody', statsData?.error || 'Неизвестная ошибка сервера');
         }
@@ -183,6 +185,85 @@ async function applyFilters() {
         console.error('Error applying filters:', error);
         showError('resultsBody', `Ошибка: ${error.message}`);
     }
+}
+
+// 🔥 НОВАЯ ФУНКЦИЯ: Обновление summary cards
+function updateSummaryCards(statsData, startDate, endDate) {
+    if (!statsData || !statsData.user_stats) {
+        console.error('No data for summary cards');
+        return;
+    }
+
+    const userStats = statsData.user_stats;
+    const totalActivities = statsData.total_activities || 0;
+
+    // 1. Активных сотрудников
+    const activeUsers = userStats.filter(user => user.total > 0).length;
+    document.getElementById('activeUsers').textContent = activeUsers;
+    document.getElementById('usersMessage').textContent = `Найдено ${userStats.length} сотрудников`;
+
+    // 2. Всего активностей (за выбранный период)
+    document.getElementById('totalActivities').textContent = totalActivities.toLocaleString();
+
+    // Форматируем период для отображения
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+
+    // Определяем текст для периода
+    let periodText = '';
+    if (daysDiff === 1) {
+        periodText = 'за сегодня';
+    } else if (daysDiff === 7) {
+        periodText = 'за 7 дней';
+    } else if (daysDiff === 30) {
+        periodText = 'за 30 дней';
+    } else {
+        periodText = `за ${daysDiff} дней`;
+    }
+    document.getElementById('periodMessage').textContent = periodText;
+
+    // 3. Звонки
+    const totalCalls = userStats.reduce((sum, user) => sum + (user.calls || 0), 0);
+    document.getElementById('totalCalls').textContent = totalCalls.toLocaleString();
+
+    // 4. Комментарии
+    const totalComments = userStats.reduce((sum, user) => sum + (user.comments || 0), 0);
+    document.getElementById('totalComments').textContent = totalComments.toLocaleString();
+
+    // 5. Среднее в день
+    const avgPerDay = daysDiff > 0 ? (totalActivities / daysDiff).toFixed(1) : 0;
+    document.getElementById('avgPerDay').textContent = avgPerDay;
+
+    // 6. Самый активный день (из статистики)
+    let mostActiveDay = '-';
+    if (statsData.statistics && statsData.statistics.daily_stats && statsData.statistics.daily_stats.length > 0) {
+        const dailyStats = statsData.statistics.daily_stats;
+        const mostActive = dailyStats.reduce((max, day) => day.total > max.total ? day : max, dailyStats[0]);
+
+        const dayNames = {
+            'Monday': 'Пн',
+            'Tuesday': 'Вт',
+            'Wednesday': 'Ср',
+            'Thursday': 'Чт',
+            'Friday': 'Пт',
+            'Saturday': 'Сб',
+            'Sunday': 'Вс'
+        };
+
+        mostActiveDay = dayNames[mostActive.day_of_week] || mostActive.day_of_week;
+    }
+    document.getElementById('mostActiveDay').textContent = mostActiveDay;
+
+    console.log('📊 Summary cards updated:', {
+        activeUsers,
+        totalActivities,
+        totalCalls,
+        totalComments,
+        avgPerDay,
+        mostActiveDay,
+        periodText
+    });
 }
 
 function displayUserStats(statsData) {
@@ -215,7 +296,7 @@ function displayUserStats(statsData) {
     if (statsData.statistics) {
         ActivityCharts.updateAllCharts(statsData.statistics);
     }
-    
+
     // ОБНОВЛЯЕМ ГРАФИК СРАВНЕНИЯ
     console.log('📊 Displaying stats for', statsData.user_stats.length, 'users');
     ActivityCharts.updateComparisonChart(statsData.user_stats);
@@ -266,6 +347,7 @@ function renderUserCheckboxes() {
         container.appendChild(div);
     });
 }
+
 
 window.showUserDetails = async function (userId) {
     const userStats = currentUserStats[userId];
@@ -361,18 +443,29 @@ window.closeDetailsPanel = function () {
 };
 
 // === ФУНКЦИИ АДМИНИСТРИРОВАНИЯ ===
-window.showAdminPanel = async function() {
+window.showAdminPanel = async function () {
     if (!currentUser || !currentUser.is_admin) {
         alert('❌ Требуются права администратора');
         return;
     }
 
-    const adminModal = createAdminModal();
-    document.body.appendChild(adminModal);
-    adminModal.style.display = 'block';
+    try {
+        // Получаем актуальное количество сотрудников
+        const usersCountResponse = await BitrixAPI.getUsersCount();
+        const usersCount = usersCountResponse.success ? usersCountResponse.count : allUsers.length;
+
+        const adminModal = createAdminModal(usersCount);
+        document.body.appendChild(adminModal);
+        adminModal.style.display = 'block';
+    } catch (error) {
+        console.error('Error showing admin panel:', error);
+        const adminModal = createAdminModal(allUsers.length);
+        document.body.appendChild(adminModal);
+        adminModal.style.display = 'block';
+    }
 };
 
-window.addAllowedEmail = async function() {
+window.addAllowedEmail = async function () {
     if (!currentUser || !currentUser.is_admin) {
         alert('❌ Требуются права администратора');
         return;
@@ -387,65 +480,19 @@ window.addAllowedEmail = async function() {
     }
 
     try {
-        // Здесь должен быть API вызов для добавления email
-        // Покажем просто сообщение
-        alert(`✅ Email ${email} добавлен в разрешенный список\n\nПримечание: Для полной функциональности требуется реализация API на сервере`);
+        const result = await BitrixAPI.addAllowedEmail(email);
+        if (result.success) {
+            alert(`✅ Email ${email} добавлен в разрешенный список`);
+        } else {
+            alert('❌ Ошибка при добавлении email: ' + (result.error || 'Неизвестная ошибка'));
+        }
     } catch (error) {
         alert('❌ Ошибка при добавлении email: ' + error.message);
     }
 };
 
-window.debugUsers = async function() {
-    try {
-        const response = await BitrixAPI.makeRequest('/api/debug/presales-users');
-        const data = await response.json();
-        console.log('🐛 Debug users:', data);
-        alert('Данные отладки в консоли (F12)');
-    } catch (error) {
-        alert('❌ Ошибка отладки: ' + error.message);
-    }
-};
-
-window.findUsers = function() {
-    const searchTerm = prompt('Введите имя или фамилию для поиска:');
-    if (!searchTerm) return;
-
-    const checkboxes = document.querySelectorAll('#employeesCheckboxes .checkbox-item');
-    let found = false;
-
-    checkboxes.forEach(item => {
-        const label = item.querySelector('label');
-        if (label && label.textContent.toLowerCase().includes(searchTerm.toLowerCase())) {
-            const checkbox = item.querySelector('input');
-            checkbox.checked = true;
-            item.style.backgroundColor = '#e3f2fd';
-            found = true;
-            
-            // Сбрасываем подсветку через 3 секунды
-            setTimeout(() => {
-                item.style.backgroundColor = '';
-            }, 3000);
-        }
-    });
-
-    if (!found) {
-        alert('❌ Сотрудники не найдены');
-    } else {
-        alert('✅ Сотрудники найдены и выделены');
-    }
-};
-
-window.testUserDetails = async function() {
-    if (allUsers.length > 0) {
-        const firstUserId = allUsers[0].ID;
-        await showUserDetails(firstUserId);
-    } else {
-        alert('❌ Нет данных о пользователях');
-    }
-};
-
 // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
-function createAdminModal() {
+function createAdminModal(usersCount) {
     const modal = document.createElement('div');
     modal.className = 'modal';
     modal.id = 'adminModal';
@@ -469,7 +516,7 @@ function createAdminModal() {
                     <div class="system-info">
                         <p><strong>Текущий пользователь:</strong> ${currentUser?.email || 'Неизвестно'}</p>
                         <p><strong>Права:</strong> ${currentUser?.is_admin ? 'Администратор' : 'Пользователь'}</p>
-                        <p><strong>Всего сотрудников:</strong> ${allUsers.length}</p>
+                        <p><strong>Всего сотрудников:</strong> ${usersCount}</p>
                     </div>
                 </div>
             </div>
@@ -477,7 +524,7 @@ function createAdminModal() {
     `;
 
     // Обработчик закрытия по клику вне модального окна
-    modal.addEventListener('click', function(e) {
+    modal.addEventListener('click', function (e) {
         if (e.target === modal) {
             closeAdminModal();
         }
@@ -493,9 +540,24 @@ function closeAdminModal() {
     }
 }
 
-function showAllowedEmails() {
-    alert('📧 Функция показа разрешенных email требует реализации API на сервере');
-}
+window.showAllowedEmails = async function () {
+    if (!currentUser || !currentUser.is_admin) {
+        alert('❌ Требуются права администратора');
+        return;
+    }
+
+    try {
+        const result = await BitrixAPI.getAllowedEmails();
+        if (result.success && result.emails) {
+            const emails = result.emails.join('\n');
+            alert(`📧 Разрешенные email:\n\n${emails}`);
+        } else {
+            alert('❌ Ошибка при получении списка email: ' + (result.error || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        alert('❌ Ошибка: ' + error.message);
+    }
+};
 
 function clearAllData() {
     if (confirm('⚠️ Вы уверены, что хотите очистить ВСЕ данные? Это действие нельзя отменить.')) {
