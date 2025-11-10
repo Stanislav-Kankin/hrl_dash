@@ -1,9 +1,14 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bitrix24 Analytics Dashboard</title>
+    <script>
+        const buildDate = "2025.11.10.1"; // Формат: ГГГГ.ММ.ДД.ВЕРСИЯ
+    </script>
+
     <button id="authButton" onclick="showAuthModal()" style="
             position: absolute;
             top: 20px;
@@ -20,6 +25,7 @@
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
+
 <body>
     <div class="dashboard">
         <div class="header">
@@ -66,7 +72,9 @@
                 <button class="quick-btn" onclick="testConnection()">Тест подключения</button>
                 <button class="quick-btn" onclick="showAdminPanel()">👑 Админ</button>
                 <button class="quick-btn" onclick="addAllowedEmail()">➕ Добавить email</button>
-                <button class="quick-btn" onclick="localStorage.removeItem('auth_token'); location.reload();">🔄 Сбросить авторизацию</button>
+                <button class="quick-btn" onclick="localStorage.removeItem('auth_token'); location.reload();">🔄
+                    Сбросить авторизацию</button>
+                <button class="quick-btn" onclick="showVersion()">ℹ️ Версия ${buildDate}</button>
             </div>
         </div>
         <div class="results-section">
@@ -204,24 +212,28 @@
             border-radius: 8px;
             background: white;
         }
+
         .checkbox-item {
             display: flex;
             align-items: center;
             gap: 5px;
             white-space: nowrap;
         }
+
         .checkbox-item input {
             margin: 0;
         }
+
         .modal {
             position: fixed;
-            z-index:1000;
+            z-index: 1000;
             left: 0;
             top: 0;
             width: 100%;
             height: 100%;
             background-color: rgba(0, 0, 0, 0.5);
         }
+
         .modal-content {
             background-color: white;
             margin: 10% auto;
@@ -231,6 +243,7 @@
             max-width: 90%;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
         }
+
         .modal-header {
             background: linear-gradient(135deg, #2c3e50, #34495e);
             color: white;
@@ -240,31 +253,38 @@
             justify-content: space-between;
             align-items: center;
         }
+
         .modal-header h2 {
             margin: 0;
             font-size: 1.5em;
         }
+
         .close {
             color: white;
             font-size: 28px;
             font-weight: bold;
             cursor: pointer;
         }
+
         .close:hover {
             color: #ccc;
         }
+
         .modal-body {
             padding: 30px;
         }
+
         .form-group {
             margin-bottom: 20px;
         }
+
         .form-group label {
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
             color: #495057;
         }
+
         .form-group input {
             width: 100%;
             padding: 12px;
@@ -273,10 +293,12 @@
             font-size: 14px;
             transition: border-color 0.3s;
         }
+
         .form-group input:focus {
             border-color: #667eea;
             outline: none;
         }
+
         .auth-btn {
             width: 100%;
             background: linear-gradient(135deg, #667eea, #764ba2);
@@ -289,20 +311,25 @@
             font-weight: 600;
             transition: transform 0.2s;
         }
+
         .auth-btn:hover {
             transform: translateY(-2px);
         }
+
         .modal-body p {
             text-align: center;
             margin-top: 20px;
         }
+
         .modal-body a {
             color: #667eea;
             text-decoration: none;
         }
+
         .modal-body a:hover {
             text-decoration: underline;
         }
+
         /* Индикатор загрузки */
         .loading-overlay {
             position: fixed;
@@ -317,6 +344,7 @@
             z-index: 9999;
             backdrop-filter: blur(5px);
         }
+
         .loading-spinner {
             background: white;
             padding: 30px;
@@ -324,6 +352,7 @@
             text-align: center;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
         }
+
         .spinner {
             width: 40px;
             height: 40px;
@@ -333,10 +362,12 @@
             animation: spin 1s linear infinite;
             margin: 0 auto 15px;
         }
+
         @keyframes spin {
             0% {
                 transform: rotate(0deg);
             }
+
             100% {
                 transform: rotate(360deg);
             }
@@ -364,4 +395,5 @@
         console.log('🔍 All inputs in filters:', document.querySelectorAll('.filters-section input, .filters-section select'));
     </script>
 </body>
+
 </html>

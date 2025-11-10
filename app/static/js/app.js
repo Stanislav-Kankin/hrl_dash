@@ -266,6 +266,7 @@ function updateSummaryCards(statsData, startDate, endDate) {
     });
 }
 
+
 function displayUserStats(statsData) {
     if (!statsData?.user_stats) {
         showError('resultsBody', 'Нет данных для отображения');
@@ -572,6 +573,10 @@ function validateEmail(email) {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return re.test(email);
 }
+
+window.showVersion = function() {
+    alert(`Версия системы: ${buildDate}`);
+};
 
 // === ГЛОБАЛЬНЫЕ ФУНКЦИИ ===
 window.applyFilters = applyFilters;
