@@ -592,7 +592,7 @@ function groupActivitiesByDay(activities) {
 }
 
 function buildActivitiesHtml(activitiesByDay, data) {
-    const sortedDays = Object.keys(activitiesByDay).sort().reverse();
+    const sortedDays = Object.keys(activitiesByDay).sort().reverse(); // Уже правильно - от новых к старым
     
     if (sortedDays.length === 0) {
         return '<div class="loading">Нет активностей за выбранный период</div>';
@@ -615,7 +615,17 @@ function buildActivitiesHtml(activitiesByDay, data) {
         contentHtml += `<div class="day-group">
             <div class="day-header">📅 ${dayName} (${acts.length})</div>`;
         
-        acts.forEach(act => {
+        // 🔥 ИЗМЕНЕНИЕ: сортируем активности внутри дня от новых к старым
+        const sortedActivities = acts.sort((a, b) => {
+            // Создаем даты для сравнения
+            const timeA = a.time; // формат "HH:MM"
+            const timeB = b.time; // формат "HH:MM"
+            
+            // Сравниваем время (от новых к старым)
+            return timeB.localeCompare(timeA);
+        });
+        
+        sortedActivities.forEach(act => {
             const safeDesc = escapeHtml(act.description);
             contentHtml += `
                 <div class="activity-item">
