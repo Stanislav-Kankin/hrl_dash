@@ -101,10 +101,10 @@ async def get_main_stats(
 
         # 🔥 ЕСЛИ НЕ ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ - проверяем кэш
         if not force_refresh:
-            cache_analysis = await warehouse_service.get_cached_activities_optimized(
-                target_user_ids, start_date, end_date
+            cache_analysis = await warehouse_service.get_cached_activities_for_selected_users(
+                target_user_ids, start_date, end_date, activity_types
             )
-            
+
             cached_activities = cache_analysis["activities"]
             completeness = cache_analysis["completeness"]
 
@@ -643,36 +643,40 @@ async def get_fast_stats(
             return {"success": False, "error": "Список сотрудников пуст"}
 
         user_info_map = {str(u['ID']): u for u in presales_users}
-        target_user_ids = user_ids_list if user_ids_list else list(user_info_map.keys())
+        
+        # 🔥 ВАЖНО: определяем целевых пользователей
+        if user_ids_list:
+            target_user_ids = user_ids_list  # Только выбранные пользователи
+        else:
+            target_user_ids = list(user_info_map.keys())  # Все пользователи
 
-        logger.info(f"⚡ Fast stats: {start_date} to {end_date}, users: {len(target_user_ids)}")
+        logger.info(f"⚡ Fast stats: {start_date} to {end_date}, selected users: {len(target_user_ids)}")
 
-        # 🔥 ТОЛЬКО ДАННЫЕ ИЗ КЭША - НИКАКИХ ЗАПРОСОВ К BITRIX
-        cache_analysis = await warehouse_service.get_cached_activities_optimized(
+        # 🔥 ИСПРАВЛЕНИЕ: проверяем кэш ТОЛЬКО для выбранных пользователей
+        cache_analysis = await warehouse_service.get_cached_activities_for_selected_users(
             target_user_ids, start_date, end_date, activity_types
         )
-
+        
         cached_activities = cache_analysis["activities"]
         completeness = cache_analysis["completeness"]
 
-        # 🔥 ТОЛЬКО если данные полностью в кэше (>99%)
+        # 🔥 ТОЛЬКО если данные полностью в кэше (>99%) для ВЫБРАННЫХ пользователей
         if completeness >= 99.0:
             activities = cached_activities
-            logger.info(f"⚡ Using cached data: {completeness:.1f}% complete, {len(activities)} activities")
+            logger.info(f"⚡ Using cached data for {len(target_user_ids)} users: {completeness:.1f}% complete, {len(activities)} activities")
             
             # --- Логика подсчета статистики из активностей ---
             user_activities = {}
             if activities:
                 for act in activities:
                     uid = str(act['AUTHOR_ID'])
-                    if uid in target_user_ids:
+                    if uid in target_user_ids:  # Фильтруем по выбранным пользователям
                         if uid not in user_activities:
                             user_activities[uid] = []
                         user_activities[uid].append(act)
 
-            response_users = user_ids_list if user_ids_list else list(user_info_map.keys())
             user_stats = []
-            for uid in response_users:
+            for uid in target_user_ids:  # Только выбранные пользователи
                 info = user_info_map.get(uid)
                 if not info:
                     continue
@@ -698,7 +702,7 @@ async def get_fast_stats(
                     "last_activity_date": last_act.strftime('%Y-%m-%d %H:%M') if last_act else "Нет данных"
                 })
 
-            total_activities = sum(len(user_activities.get(uid, [])) for uid in response_users)
+            total_activities = sum(len(user_activities.get(uid, [])) for uid in target_user_ids)
 
             result = {
                 "success": True, 
@@ -709,22 +713,23 @@ async def get_fast_stats(
                 "cache_completeness": completeness,
                 "activities_count": len(activities),
                 "start_date": start_date,
-                "end_date": end_date
+                "end_date": end_date,
+                "selected_users_count": len(target_user_ids)
             }
 
             if include_statistics:
-                # 🔥 ИСПРАВЛЕНИЕ: статистика из активностей БЕЗ запроса к Bitrix
                 statistics = await bitrix_service.get_activity_statistics_from_data(activities)
                 result["statistics"] = statistics
 
             return result
         else:
-            # 🔥 Данных в кэше недостаточно
+            # 🔥 Данных в кэше недостаточно для ВЫБРАННЫХ пользователей
             return {
                 "success": False,
                 "from_cache": False,
                 "cache_completeness": completeness,
-                "error": f"Данные в кэше неполные ({completeness:.1f}%). Используйте загрузку из Bitrix."
+                "selected_users_count": len(target_user_ids),
+                "error": f"Данные в кэше неполные для выбранных сотрудников ({completeness:.1f}%). Используйте загрузку из Bitrix."
             }
         
     except Exception as e:

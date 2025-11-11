@@ -434,6 +434,80 @@ class BitrixService:
                 'end': sorted_daily[-1]['date'] if sorted_daily else ''
             }
         }
+    
+    async def get_cached_activities_for_selected_users(self, selected_user_ids: List[str], start_date: str, end_date: str, activity_types: List[str] = None) -> Dict:
+        """
+        Проверяет полноту кэша ТОЛЬКО для выбранных пользователей
+        """
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                placeholders = ','.join('?' for _ in selected_user_ids)
+                
+                # Базовый запрос для выбранных пользователей
+                query = f'''
+                    SELECT raw_data, data_date FROM activities_cache 
+                    WHERE user_id IN ({placeholders}) 
+                    AND data_date BETWEEN ? AND ?
+                '''
+                params = selected_user_ids + [start_date, end_date]
+                
+                # Фильтр по типу активности
+                if activity_types and activity_types != ['all']:
+                    type_placeholders = ','.join('?' for _ in activity_types)
+                    query += f' AND type_id IN ({type_placeholders})'
+                    params.extend(activity_types)
+                
+                query += ' ORDER BY created DESC'
+                
+                cursor = await db.execute(query, params)
+                rows = await cursor.fetchall()
+                
+                if not rows:
+                    return {"activities": [], "missing_days": [], "completeness": 0, "selected_users": selected_user_ids}
+                
+                # Анализируем данные ТОЛЬКО для выбранных пользователей
+                cached_dates = set()
+                activities = []
+                
+                for row in rows:
+                    try:
+                        activity_data = json.loads(row[0])
+                        # 🔥 ВАЖНО: фильтруем по выбранным пользователям на случай если в кэше есть данные других пользователей
+                        if str(activity_data.get('AUTHOR_ID')) in selected_user_ids:
+                            activities.append(activity_data)
+                            cached_dates.add(row[1])
+                    except Exception as e:
+                        continue
+                
+                # Определяем недостающие дни
+                start = datetime.fromisoformat(start_date)
+                end = datetime.fromisoformat(end_date)
+                total_days = (end - start).days + 1
+                
+                missing_days = []
+                current = start
+                while current <= end:
+                    date_str = current.strftime("%Y-%m-%d")
+                    if date_str not in cached_dates:
+                        missing_days.append(date_str)
+                    current += timedelta(days=1)
+                
+                completeness = ((total_days - len(missing_days)) / total_days) * 100
+                
+                logger.info(f"📊 Cache analysis for {len(selected_user_ids)} selected users: {len(activities)} activities, {completeness:.1f}% complete")
+                
+                return {
+                    "activities": activities,
+                    "missing_days": missing_days,
+                    "completeness": completeness,
+                    "cached_days_count": len(cached_dates),
+                    "total_days": total_days,
+                    "selected_users": selected_user_ids
+                }
+                    
+        except Exception as e:
+            logger.error(f"Error analyzing cache for selected users: {e}")
+            return {"activities": [], "missing_days": [], "completeness": 0, "selected_users": selected_user_ids}
 
     def clear_cache(self):
         """Очищает кэш"""
