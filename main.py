@@ -14,6 +14,7 @@ import os
 import logging
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from typing import List, Optional, Dict, Any
 import asyncio
 
 logging.basicConfig(level=logging.INFO)
@@ -736,22 +737,253 @@ async def get_fast_stats(
         logger.error(f"❌ Error in get_fast_stats: {str(e)}", exc_info=True)
         return {"success": False, "error": str(e)}
 
-@app.get("/api/deals/list")
-async def get_deals_list(
+async def get_deals(
+    self,
+    start_date: str = None,
+    end_date: str = None,
+    user_ids: List[str] = None,
+    limit: int = None
+) -> Optional[List[Dict]]:
+    """Получение списка сделок - УЛУЧШЕННАЯ ВЕРСИЯ"""
+    try:
+        all_deals = []
+        start = 0
+        batch_size = 50
+        
+        while True:
+            params = {
+                'select[]': ['ID', 'TITLE', 'STAGE_ID', 'ASSIGNED_BY_ID', 'DATE_CREATE', 'DATE_MODIFY', 'OPPORTUNITY', 'CURRENCY_ID', 'TYPE_ID', 'STATUS_ID'],
+                'start': start
+            }
+
+            # Фильтрация по дате
+            if start_date and end_date:
+                try:
+                    start_date_obj = datetime.fromisoformat(start_date)
+                    end_date_obj = datetime.fromisoformat(end_date)
+                    params['filter[>=DATE_CREATE]'] = start_date_obj.strftime("%Y-%m-%d")
+                    params['filter[<=DATE_CREATE]'] = end_date_obj.strftime("%Y-%m-%d")
+                except Exception as e:
+                    logger.error(f"Error parsing dates: {e}")
+
+            # Фильтрация по пользователям
+            if user_ids:
+                params['filter[ASSIGNED_BY_ID]'] = user_ids
+
+            deals = await self.make_bitrix_request("crm.deal.list", params)
+            if not deals:
+                break
+
+            all_deals.extend(deals)
+            logger.info(f"📊 Batch {start//50 + 1}: got {len(deals)} deals, total: {len(all_deals)}")
+
+            if len(deals) < 50:
+                break
+                
+            if limit and len(all_deals) >= limit:
+                all_deals = all_deals[:limit]
+                break
+                
+            if len(all_deals) >= 1000:
+                logger.warning("⚠️ Reached maximum deals limit (1000)")
+                break
+
+            start += 50
+            await asyncio.sleep(0.1)
+
+        logger.info(f"📊 Total deals loaded: {len(all_deals)}")
+
+        # Получаем ВСЕ типы стадий
+        all_stages = await self.get_deal_stages()
+        
+        # Создаем карту для всех возможных ID стадий
+        stage_map = {}
+        for stage in all_stages:
+            stage_id = stage.get('STATUS_ID')
+            stage_map[stage_id] = stage
+        
+        # 🔥 УЛУЧШЕННОЕ СОПОСТАВЛЕНИЕ СТАДИЙ
+        enriched_deals = []
+        for deal in all_deals:
+            stage_id = deal.get('STAGE_ID')
+            type_id = deal.get('TYPE_ID')
+            status_id = deal.get('STATUS_ID')
+            
+            # Пробуем найти стадию в порядке приоритета
+            stage_info = None
+            for potential_id in [stage_id, type_id, status_id]:
+                if potential_id and potential_id in stage_map:
+                    stage_info = stage_map[potential_id]
+                    break
+            
+            # Если не нашли, создаем базовую информацию
+            if not stage_info:
+                stage_info = {
+                    'NAME': stage_id or 'Неизвестно',
+                    'COLOR': '#cccccc'
+                }
+            
+            enriched_deals.append({
+                'ID': deal.get('ID'),
+                'TITLE': deal.get('TITLE'),
+                'STAGE_ID': stage_id,
+                'TYPE_ID': type_id,
+                'STATUS_ID': status_id,
+                'STAGE_NAME': stage_info.get('NAME', 'Неизвестно'),
+                'STAGE_COLOR': stage_info.get('COLOR', '#cccccc'),
+                'ENTITY_ID': stage_info.get('ENTITY_ID', 'UNKNOWN'),
+                'ASSIGNED_BY_ID': deal.get('ASSIGNED_BY_ID'),
+                'DATE_CREATE': deal.get('DATE_CREATE'),
+                'DATE_MODIFY': deal.get('DATE_MODIFY'),
+                'OPPORTUNITY': deal.get('OPPORTUNITY'),
+                'CURRENCY_ID': deal.get('CURRENCY_ID')
+            })
+
+        # Логируем распределение по стадиям
+        stage_distribution = {}
+        for deal in enriched_deals:
+            stage_name = deal['STAGE_NAME']
+            stage_distribution[stage_name] = stage_distribution.get(stage_name, 0) + 1
+        
+        logger.info(f"📊 Stage distribution: {stage_distribution}")
+
+        return enriched_deals
+
+    except Exception as e:
+        logger.error(f"Error getting deals: {str(e)}")
+        return None
+    
+@app.get("/api/all-users")
+async def get_all_users(current_user: dict = Depends(get_current_user)):
+    """Получение списка всех пользователей - ИСПОЛЬЗУЕТ КЭШ"""
+    try:
+        users = await bitrix_service.get_all_users()  # 🔥 ЭТОТ МЕТОД УЖЕ КЭШИРУЕТ
+        if not users:
+            return {"users": []}
+        formatted = [{"ID": str(u['ID']), "NAME": u.get('NAME', ''), "LAST_NAME": u.get('LAST_NAME', '')} for u in users]
+        return {"users": formatted}
+    except Exception as e:
+        logger.error(f"Error in all-users: {str(e)}")
+        return {"users": [], "error": str(e)}
+
+@app.get("/api/deals/stats")
+async def get_deals_stats(
     start_date: str = None,
     end_date: str = None,
     user_ids: str = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Получение списка сделок"""
+    """Получение статистики по сделкам"""
     try:
-        logger.info(f"🔍 GET /api/deals/list called with: start_date={start_date}, end_date={end_date}, user_ids={user_ids}")
+        logger.info(f"🔍 GET /api/deals/stats called with: start_date={start_date}, end_date={end_date}, user_ids={user_ids}")
+        
+        user_ids_list = user_ids.split(',') if user_ids else []
+        stats = await bitrix_service.get_deals_statistics(
+            start_date=start_date,
+            end_date=end_date,
+            user_ids=user_ids_list
+        )
+        
+        logger.info(f"✅ GET /api/deals/stats returning stats: {stats.keys() if stats else 'empty'}")
+        
+        return {
+            "success": True,
+            "stats": stats
+        }
+    except Exception as e:
+        logger.error(f"❌ Error in get_deals_stats: {str(e)}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/deals/stages")
+async def get_deals_stages(current_user: dict = Depends(get_current_user)):
+    """Получение списка стадий сделок"""
+    try:
+        stages = await bitrix_service.get_deal_stages()
+        return {
+            "success": True,
+            "stages": stages
+        }
+    except Exception as e:
+        logger.error(f"❌ Error in get_deals_stages: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/deals/user-all")
+async def get_user_all_deals(
+    user_ids: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Получение ВСЕХ сделок сотрудников (без ограничения даты)"""
+    try:
+        user_ids_list = user_ids.split(',')
+        logger.info(f"🔍 GET /api/deals/user-all for users: {user_ids_list}")
+        
+        # 🔥 БЕЗ ФИЛЬТРА ПО ДАТЕ - все сделки сотрудников
+        deals = await bitrix_service.get_deals(
+            user_ids=user_ids_list,
+            limit=500  # Лимит на все сделки
+        )
+        
+        logger.info(f"✅ GET /api/deals/user-all returning {len(deals) if deals else 0} deals")
+        
+        return {
+            "success": True,
+            "deals": deals,
+            "count": len(deals) if deals else 0,
+            "users": user_ids_list
+        }
+    except Exception as e:
+        logger.error(f"❌ Error in get_user_all_deals: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/deals/debug-stages")
+async def debug_deal_stages(current_user: dict = Depends(get_current_user)):
+    """Отладочный эндпоинт для проверки стадий сделок"""
+    try:
+        stages = await bitrix_service.get_deal_stages()
+        
+        # Группируем по типам
+        stages_by_type = {}
+        for stage in stages:
+            entity_id = stage.get('ENTITY_ID', 'UNKNOWN')
+            if entity_id not in stages_by_type:
+                stages_by_type[entity_id] = []
+            stages_by_type[entity_id].append({
+                'id': stage.get('STATUS_ID'),
+                'name': stage.get('NAME'),
+                'color': stage.get('COLOR'),
+                'entity_id': entity_id
+            })
+        
+        return {
+            "success": True,
+            "stages_by_type": stages_by_type,
+            "total_stages": len(stages)
+        }
+    except Exception as e:
+        logger.error(f"❌ Error in debug_deal_stages: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/deals/list")
+async def get_deals_list(
+    start_date: str = None,
+    end_date: str = None,
+    user_ids: str = None,
+    limit: int = None,  # 🔥 ДОБАВЛЕН ПАРАМЕТР
+    current_user: dict = Depends(get_current_user)
+):
+    """Получение списка сделок С ЛИМИТОМ"""
+    try:
+        logger.info(f"🔍 GET /api/deals/list called with: start_date={start_date}, end_date={end_date}, user_ids={user_ids}, limit={limit}")
         
         user_ids_list = user_ids.split(',') if user_ids else []
         deals = await bitrix_service.get_deals(
             start_date=start_date,
             end_date=end_date,
-            user_ids=user_ids_list
+            user_ids=user_ids_list,
+            limit=limit  # 🔥 ПЕРЕДАЕМ ЛИМИТ
         )
         
         logger.info(f"✅ GET /api/deals/list returning {len(deals) if deals else 0} deals")
@@ -764,19 +996,7 @@ async def get_deals_list(
     except Exception as e:
         logger.error(f"❌ Error in get_deals_list: {str(e)}", exc_info=True)
         return {"success": False, "error": str(e)}
-    
-@app.get("/api/all-users")
-async def get_all_users(current_user: dict = Depends(get_current_user)):
-    """Получение списка всех пользователей"""
-    try:
-        users = await bitrix_service.get_all_users()
-        if not users:
-            return {"users": []}
-        formatted = [{"ID": str(u['ID']), "NAME": u.get('NAME', ''), "LAST_NAME": u.get('LAST_NAME', '')} for u in users]
-        return {"users": formatted}
-    except Exception as e:
-        logger.error(f"Error in all-users: {str(e)}")
-        return {"users": [], "error": str(e)}
+
 
 if __name__ == "__main__":
     import uvicorn

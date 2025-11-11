@@ -397,36 +397,69 @@ class BitrixService:
         self,
         start_date: str = None,
         end_date: str = None,
-        user_ids: List[str] = None
+        user_ids: List[str] = None,
+        limit: int = None  # 🔥 НОВЫЙ ПАРАМЕТР
     ) -> Optional[List[Dict]]:
-        """Получение списка сделок"""
+        """Получение списка сделок - С ПАГИНАЦИЕЙ"""
         try:
-            params = {
-                'select[]': ['ID', 'TITLE', 'STAGE_ID', 'ASSIGNED_BY_ID', 'DATE_CREATE', 'DATE_MODIFY', 'OPPORTUNITY', 'CURRENCY_ID']
-            }
+            all_deals = []
+            start = 0
+            batch_size = 50  # Bitrix ограничивает 50 записей за раз
+            
+            while True:
+                params = {
+                    'select[]': ['ID', 'TITLE', 'STAGE_ID', 'ASSIGNED_BY_ID', 'DATE_CREATE', 'DATE_MODIFY', 'OPPORTUNITY', 'CURRENCY_ID'],
+                    'start': start
+                }
 
-            # Фильтрация по дате
-            if start_date and end_date:
-                start_date_obj = datetime.fromisoformat(start_date)
-                end_date_obj = datetime.fromisoformat(end_date)
-                params['filter[>=DATE_CREATE]'] = start_date_obj.strftime("%Y-%m-%dT%H:%M:%S")
-                params['filter[<=DATE_CREATE]'] = end_date_obj.strftime("%Y-%m-%dT%H:%M:%S")
+                # Фильтрация по дате
+                if start_date and end_date:
+                    try:
+                        start_date_obj = datetime.fromisoformat(start_date)
+                        end_date_obj = datetime.fromisoformat(end_date)
+                        params['filter[>=DATE_CREATE]'] = start_date_obj.strftime("%Y-%m-%d")
+                        params['filter[<=DATE_CREATE]'] = end_date_obj.strftime("%Y-%m-%d")
+                    except Exception as e:
+                        logger.error(f"Error parsing dates: {e}")
 
-            # Фильтрация по пользователям
-            if user_ids:
-                params['filter[ASSIGNED_BY_ID]'] = user_ids
+                # Фильтрация по пользователям
+                if user_ids:
+                    params['filter[ASSIGNED_BY_ID]'] = user_ids
 
-            deals = await self.make_bitrix_request("crm.deal.list", params)
-            if not deals:
-                return []
+                deals = await self.make_bitrix_request("crm.deal.list", params)
+                if not deals:
+                    break
+
+                all_deals.extend(deals)
+                logger.info(f"📊 Batch {start//50 + 1}: got {len(deals)} deals, total: {len(all_deals)}")
+
+                # 🔥 ОСТАНАВЛИВАЕМСЯ ЕСЛИ:
+                # 1. Получили меньше 50 сделок (значит это последняя страница)
+                # 2. Достигли лимита если он указан
+                # 3. Превысили максимальное количество (например 1000 чтобы не зависнуть)
+                if len(deals) < 50:
+                    break
+                    
+                if limit and len(all_deals) >= limit:
+                    all_deals = all_deals[:limit]
+                    break
+                    
+                if len(all_deals) >= 1000:  # Максимальная защита
+                    logger.warning("⚠️ Reached maximum deals limit (1000)")
+                    break
+
+                start += 50
+                await asyncio.sleep(0.1)  # Пауза между запросами
+
+            logger.info(f"📊 Total deals loaded: {len(all_deals)}")
 
             # Получаем информацию о стадиях
             stages = await self.get_deal_stages()
-            stage_map = {stage['STATUS_ID']: stage for stage in stages}
+            stage_map = {stage['STATUS_ID']: stage for stage in stages} if stages else {}
 
             # Обогащаем сделки данными о стадиях
             enriched_deals = []
-            for deal in deals:
+            for deal in all_deals:
                 stage_info = stage_map.get(deal.get('STAGE_ID'), {})
                 enriched_deals.append({
                     'ID': deal.get('ID'),
@@ -441,7 +474,6 @@ class BitrixService:
                     'CURRENCY_ID': deal.get('CURRENCY_ID')
                 })
 
-            logger.info(f"📊 Получено {len(enriched_deals)} сделок")
             return enriched_deals
 
         except Exception as e:
@@ -449,12 +481,37 @@ class BitrixService:
             return None
 
     async def get_deal_stages(self) -> List[Dict]:
-        """Получение списка стадий сделок"""
+        """Получение списка ВСЕХ стадий и статусов сделок"""
         try:
+            all_stages = []
+            
+            # Основные стадии воронки
             stages = await self.make_bitrix_request("crm.status.list", {
                 'filter[ENTITY_ID]': 'DEAL_STAGE'
             })
-            return stages if stages else []
+            if stages:
+                all_stages.extend(stages)
+                logger.info(f"📊 Loaded {len(stages)} DEAL_STAGE stages")
+            
+            # Типы сделок
+            deal_types = await self.make_bitrix_request("crm.status.list", {
+                'filter[ENTITY_ID]': 'DEAL_TYPE'
+            })
+            if deal_types:
+                all_stages.extend(deal_types)
+                logger.info(f"📊 Loaded {len(deal_types)} DEAL_TYPE stages")
+            
+            # Общие статусы
+            statuses = await self.make_bitrix_request("crm.status.list", {
+                'filter[ENTITY_ID]': 'STATUS'
+            })
+            if statuses:
+                all_stages.extend(statuses)
+                logger.info(f"📊 Loaded {len(statuses)} STATUS stages")
+            
+            logger.info(f"📊 Total stages loaded: {len(all_stages)}")
+            return all_stages
+            
         except Exception as e:
             logger.error(f"Error getting deal stages: {str(e)}")
             return []
@@ -465,21 +522,23 @@ class BitrixService:
         end_date: str = None,
         user_ids: List[str] = None
     ) -> Dict[str, Any]:
-        """Статистика по сделкам"""
+        """Статистика по сделкам - УПРОЩЕННАЯ ВЕРСИЯ"""
         try:
             deals = await self.get_deals(start_date, end_date, user_ids)
             if not deals:
-                return {}
+                return {
+                    'total_deals': 0,
+                    'total_value': 0,
+                    'deals_by_stage': []
+                }
 
             # Статистика по стадиям
             stage_stats = {}
-            user_stats = {}
             total_value = 0
 
             for deal in deals:
                 stage_id = deal['STAGE_ID']
-                user_id = deal['ASSIGNED_BY_ID']
-                value = float(deal.get('OPPORTUNITY', 0))
+                value = float(deal.get('OPPORTUNITY', 0) or 0)
 
                 # Статистика по стадиям
                 if stage_id not in stage_stats:
@@ -491,43 +550,33 @@ class BitrixService:
                     }
                 stage_stats[stage_id]['count'] += 1
                 stage_stats[stage_id]['value'] += value
-
-                # Статистика по пользователям
-                if user_id not in user_stats:
-                    user_stats[user_id] = {
-                        'total_deals': 0,
-                        'by_stage': {},
-                        'total_value': 0
-                    }
-                user_stats[user_id]['total_deals'] += 1
-                user_stats[user_id]['total_value'] += value
-
-                if stage_id not in user_stats[user_id]['by_stage']:
-                    user_stats[user_id]['by_stage'][stage_id] = 0
-                user_stats[user_id]['by_stage'][stage_id] += 1
-
                 total_value += value
+
+            # Преобразуем в список для фронтенда
+            deals_by_stage = [
+                {
+                    'stage_id': stage_id,
+                    'stage_name': stats['name'],
+                    'stage_color': stats['color'],
+                    'count': stats['count'],
+                    'value': stats['value']
+                }
+                for stage_id, stats in stage_stats.items()
+            ]
 
             return {
                 'total_deals': len(deals),
                 'total_value': total_value,
-                'stage_stats': stage_stats,
-                'user_stats': user_stats,
-                'deals_by_stage': [
-                    {
-                        'stage_id': stage_id,
-                        'stage_name': stats['name'],
-                        'stage_color': stats['color'],
-                        'count': stats['count'],
-                        'value': stats['value']
-                    }
-                    for stage_id, stats in stage_stats.items()
-                ]
+                'deals_by_stage': deals_by_stage
             }
 
         except Exception as e:
             logger.error(f"Error getting deals statistics: {str(e)}")
-            return {}
+            return {
+                'total_deals': 0,
+                'total_value': 0,
+                'deals_by_stage': []
+            }
 
     async def get_user_deals(self, user_id: str) -> Optional[List[Dict]]:
         """Получение сделок конкретного пользователя"""

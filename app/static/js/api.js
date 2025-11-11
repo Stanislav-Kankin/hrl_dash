@@ -190,4 +190,31 @@ class BitrixAPI {
         const response = await this.makeRequest('/api/all-users');
         return await response.json();
     }
+
+    static async getDealsList(startDate = null, endDate = null, userIds = [], limit = null) {
+        let url = '/api/deals/list';
+        const params = [];
+
+        if (startDate) params.push(`start_date=${encodeURIComponent(startDate)}`);
+        if (endDate) params.push(`end_date=${encodeURIComponent(endDate)}`);
+        if (userIds.length > 0) params.push(`user_ids=${userIds.join(',')}`);
+        if (limit) params.push(`limit=${limit}`);
+
+        if (params.length > 0) {
+            url += `?${params.join('&')}`;
+        }
+
+        const response = await this.makeRequest(url);
+        return await response.json();
+    }
+
+    static async getUserAllDeals(userIds = []) {
+        let url = '/api/deals/user-all';
+        if (userIds.length > 0) {
+            url += `?user_ids=${userIds.join(',')}`;
+        }
+
+        const response = await this.makeRequest(url);
+        return await response.json();
+    }
 }

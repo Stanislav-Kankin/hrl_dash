@@ -32,7 +32,7 @@
             <h1>📊 Bitrix24 Analytics Dashboard</h1>
             <p>Дашборд для анализа активности сотрудников</p>
         </div>
-        
+
         <!-- Вкладки -->
         <div class="tabs-section">
             <div class="tabs">
@@ -189,13 +189,14 @@
                     </div>
                     <div class="filter-item" style="min-width: auto;">
                         <label style="visibility: hidden;">Действия</label>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="apply-btn" onclick="loadDealsData()">📊 Загрузить сделки</button>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button class="apply-btn" onclick="loadDealsData()">📊 Сделки за период</button>
+                            <button class="load-btn" onclick="loadUserAllDeals()">👥 Все сделки сотрудников</button>
                         </div>
                     </div>
                 </div>
             </div>
-            
+
             <div class="results-section">
                 <div class="summary-cards">
                     <div class="summary-card">
@@ -231,8 +232,6 @@
                         <canvas id="dealsValueChart"></canvas>
                     </div>
                 </div>
-
-                <!-- Таблица сделок -->
                 <div class="table-container">
                     <table id="dealsTable">
                         <thead>
@@ -243,14 +242,19 @@
                                 <th>Сумма</th>
                                 <th>Дата создания</th>
                                 <th>Дата изменения</th>
+                                <th>ID</th>
                             </tr>
                         </thead>
                         <tbody id="dealsBody">
                             <tr>
-                                <td colspan="6" class="loading">Загрузка данных о сделках...</td>
+                                <td colspan="7" class="loading">Загрузка данных о сделках...</td>
                             </tr>
                         </tbody>
                     </table>
+
+                    <div id="dealsPagination"
+                        style="padding: 15px; background: #f8f9fa; border-top: 1px solid #e9ecef; display: flex; justify-content: space-between; align-items: center;">
+                    </div>
                 </div>
             </div>
         </div>
