@@ -16,7 +16,7 @@ class BitrixService:
         self._cache = {}
         self._cache_ttl = 10 * 60
         self.executor = ThreadPoolExecutor(max_workers=5)
-        self.max_activities_per_user = 1000  # 🔥 ОГРАНИЧЕНИЕ на количество активностей на пользователя
+        self.max_activities_per_user = 100000  # 🔥 ОГРАНИЧЕНИЕ на количество активностей на пользователя
         self.max_days_per_request = 30  # 🔥 Максимальный период в днях для одного запроса
         
     async def ensure_session(self):
