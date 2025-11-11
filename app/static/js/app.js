@@ -1,4 +1,4 @@
-// app.js - С РАБОЧИМИ КНОПКАМИ АДМИНИСТРИРОВАНИЯ
+// app.js - ОПТИМИЗИРОВАННАЯ ВЕРСИЯ
 
 const ACTIVITY_TYPES = {
     "1": { name: "Встреча", class: "badge-meeting" },
@@ -7,15 +7,126 @@ const ACTIVITY_TYPES = {
     "6": { name: "Комментарий", class: "badge-comment" }
 };
 
+const DAY_NAMES = {
+    'Monday': 'Пн',
+    'Tuesday': 'Вт', 
+    'Wednesday': 'Ср',
+    'Thursday': 'Чт',
+    'Friday': 'Пт',
+    'Saturday': 'Сб',
+    'Sunday': 'Вс'
+};
+
 let allUsers = [];
 let currentUserStats = {};
 let currentUser = null;
 
+// ========== УТИЛИТЫ ==========
 function getElementValueSafely(id, defaultValue = '') {
     const el = document.getElementById(id);
     return el ? (el.value || defaultValue) : defaultValue;
 }
 
+function escapeHtml(unsafe) {
+    return typeof unsafe === 'string' ? unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;") : unsafe;
+}
+
+function validateEmail(email) {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+}
+
+function showNotification(message, type = 'info') {
+    let container = document.getElementById('notifications');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'notifications';
+        container.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            max-width: 400px;
+        `;
+        document.body.appendChild(container);
+    }
+
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        background: ${type === 'error' ? '#f56565' : type === 'success' ? '#48bb78' : '#4299e1'};
+        color: white;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        animation: slideIn 0.3s ease-out;
+    `;
+    
+    notification.textContent = message;
+    container.appendChild(notification);
+
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease-in';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 300);
+    }, 5000);
+}
+
+// Добавляем стили для уведомлений
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes slideOut {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+    }
+`;
+document.head.appendChild(style);
+
+function showLoading(text = 'Загрузка данных...') {
+    const overlay = document.getElementById('loadingOverlay');
+    const loadingText = document.getElementById('loadingText');
+    if (overlay && loadingText) {
+        loadingText.textContent = text;
+        overlay.style.display = 'flex';
+    }
+}
+
+function hideLoading() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
+}
+
+function getAuthHeaders() {
+    const token = localStorage.getItem('auth_token');
+    const headers = {
+        'Content-Type': 'application/json'
+    };
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+}
+
+function getSelectedUsers() {
+    const checkboxes = document.querySelectorAll('#employeesCheckboxes input[type="checkbox"]:checked');
+    return Array.from(checkboxes).map(cb => cb.value);
+}
+
+// ========== ОСНОВНЫЕ ФУНКЦИИ ==========
 document.addEventListener('DOMContentLoaded', () => initializeApp());
 
 async function initializeApp() {
@@ -27,7 +138,7 @@ async function initializeApp() {
         await initializeDashboard();
     } catch (error) {
         console.error('❌ App init failed:', error);
-        showError('resultsBody', `Ошибка инициализации: ${error.message}`);
+        showNotification('Ошибка инициализации: ' + error.message, 'error');
     }
 }
 
@@ -47,7 +158,6 @@ async function setDefaultDatesWithRetry(maxAttempts = 10) {
         const start = document.getElementById('startDate');
         const end = document.getElementById('endDate');
         if (start && end) {
-            // Устанавливаем сегодняшний день как начальную и конечную дату
             const today = new Date();
             const fmt = d => d.toISOString().split('T')[0];
             start.value = fmt(today);
@@ -90,13 +200,9 @@ async function initializeDashboard() {
         console.log('📊 Initializing dashboard...');
         await waitForCriticalElements();
 
-        // Инициализируем графики
         ActivityCharts.initCharts();
-
-        // Загружаем список пользователей
         await loadUsersList();
 
-        // Если авторизован — загружаем данные
         if (BitrixAPI.authToken && currentUser) {
             await applyFilters();
         } else {
@@ -104,7 +210,7 @@ async function initializeDashboard() {
         }
     } catch (error) {
         console.error('❌ Dashboard initialization error:', error);
-        showError('resultsBody', `Ошибка инициализации: ${error.message}`);
+        showNotification('Ошибка инициализации: ' + error.message, 'error');
     }
 }
 
@@ -112,6 +218,7 @@ async function waitForCriticalElements() {
     const criticalElements = ['employeesCheckboxes', 'activityTypeSelect', 'startDate', 'endDate', 'resultsBody'];
     const startTime = Date.now();
     const maxWaitTime = 10000;
+    
     while (Date.now() - startTime < maxWaitTime) {
         const allLoaded = criticalElements.every(id => {
             const element = document.getElementById(id);
@@ -140,136 +247,115 @@ function showLoginPrompt() {
     }
 }
 
-async function applyFilters() {
-    if (!BitrixAPI.authToken || !currentUser) {
-        showLoginPrompt();
-        return;
-    }
-
-    showLoading('resultsBody', 'Загрузка данных...');
-
-    const checkboxes = document.querySelectorAll('#employeesCheckboxes .user-checkbox:checked');
+// ========== ФИЛЬТРЫ И ДАННЫЕ ==========
+async function applyFilters(useFastStats = true) {
+    showLoading('Загрузка данных...');
+    
+    const selectedUsers = getSelectedUsers();
     const startDate = document.getElementById('startDate').value;
     const endDate = document.getElementById('endDate').value;
     const activityType = document.getElementById('activityTypeSelect').value;
-
+    
     if (!startDate || !endDate) {
-        alert('❌ Пожалуйста, выберите диапазон дат');
+        alert('Пожалуйста, выберите диапазон дат');
+        hideLoading();
         return;
     }
-
-    if (checkboxes.length === 0) {
-        alert('❌ Выберите хотя бы одного сотрудника');
-        return;
-    }
-
-    const selectedUserIds = Array.from(checkboxes).map(cb => cb.value);
-
-    const filters = {
-        user_ids: selectedUserIds,
-        activity_type: activityType === 'all' ? null : activityType,
-        start_date: startDate,
-        end_date: endDate
-    };
-
+    
     try {
-        const statsData = await BitrixAPI.getDetailedStats(filters);
-        if (statsData && statsData.success) {
-            displayUserStats(statsData);
-            // 🔥 ОБНОВЛЯЕМ КАРТОЧКИ С ДАННЫМИ
-            updateSummaryCards(statsData, startDate, endDate);
+        let url;
+        if (useFastStats) {
+            url = `/api/stats/fast?start_date=${startDate}&end_date=${endDate}`;
+            if (selectedUsers.length > 0) {
+                url += `&user_ids=${selectedUsers.join(',')}`;
+            }
         } else {
-            showError('resultsBody', statsData?.error || 'Неизвестная ошибка сервера');
+            url = `/api/stats/detailed?start_date=${startDate}&end_date=${endDate}&include_statistics=true`;
+            if (selectedUsers.length > 0) {
+                url += `&user_ids=${selectedUsers.join(',')}`;
+            }
+            if (activityType !== 'all') {
+                url += `&activity_type=${activityType}`;
+            }
+        }
+        
+        const response = await fetch(url, {
+            headers: getAuthHeaders()
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            displayResults(data);
+            
+            if (data.cache_used) {
+                showNotification('✅ Данные загружены из кэша', 'success');
+            } else {
+                showNotification('🔄 Данные загружены из Bitrix', 'info');
+            }
+        } else {
+            throw new Error(data.error || 'Unknown error');
         }
     } catch (error) {
-        console.error('Error applying filters:', error);
-        showError('resultsBody', `Ошибка: ${error.message}`);
+        console.error('Error:', error);
+        showNotification('❌ Ошибка загрузки данных: ' + error.message, 'error');
+    } finally {
+        hideLoading();
     }
 }
 
-// 🔥 НОВАЯ ФУНКЦИЯ: Обновление summary cards
-function updateSummaryCards(statsData, startDate, endDate) {
-    if (!statsData || !statsData.user_stats) {
-        console.error('No data for summary cards');
+async function refreshData() {
+    showLoading('Обновление данных из Bitrix...');
+    
+    const selectedUsers = getSelectedUsers();
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    
+    if (!startDate || !endDate) {
+        alert('Пожалуйста, выберите диапазон дат');
+        hideLoading();
+        return;
+    }
+    
+    try {
+        let url = `/api/refresh-cache?start_date=${startDate}&end_date=${endDate}`;
+        if (selectedUsers.length > 0) {
+            url += `&user_ids=${selectedUsers.join(',')}`;
+        }
+        
+        const response = await fetch(url, {
+            headers: getAuthHeaders()
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(`✅ Кэш обновлен: ${data.activities_count} активностей`, 'success');
+            await applyFilters(true);
+        } else {
+            throw new Error(data.error || 'Unknown error');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification('❌ Ошибка обновления: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+function displayResults(data) {
+    if (!data?.user_stats) {
+        showNotification('Нет данных для отображения', 'error');
         return;
     }
 
-    const userStats = statsData.user_stats;
-    const totalActivities = statsData.total_activities || 0;
-
-    // 1. Активных сотрудников
-    const activeUsers = userStats.filter(user => user.total > 0).length;
-    document.getElementById('activeUsers').textContent = activeUsers;
-    document.getElementById('usersMessage').textContent = `Найдено ${userStats.length} сотрудников`;
-
-    // 2. Всего активностей (за выбранный период)
-    document.getElementById('totalActivities').textContent = totalActivities.toLocaleString();
-
-    // Форматируем период для отображения
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
-
-    // Определяем текст для периода
-    let periodText = '';
-    if (daysDiff === 1) {
-        periodText = 'за сегодня';
-    } else if (daysDiff === 7) {
-        periodText = 'за 7 дней';
-    } else if (daysDiff === 30) {
-        periodText = 'за 30 дней';
-    } else {
-        periodText = `за ${daysDiff} дней`;
-    }
-    document.getElementById('periodMessage').textContent = periodText;
-
-    // 3. Звонки
-    const totalCalls = userStats.reduce((sum, user) => sum + (user.calls || 0), 0);
-    document.getElementById('totalCalls').textContent = totalCalls.toLocaleString();
-
-    // 4. Комментарии
-    const totalComments = userStats.reduce((sum, user) => sum + (user.comments || 0), 0);
-    document.getElementById('totalComments').textContent = totalComments.toLocaleString();
-
-    // 5. Среднее в день
-    const avgPerDay = daysDiff > 0 ? (totalActivities / daysDiff).toFixed(1) : 0;
-    document.getElementById('avgPerDay').textContent = avgPerDay;
-
-    // 6. Самый активный день (из статистики)
-    let mostActiveDay = '-';
-    if (statsData.statistics && statsData.statistics.daily_stats && statsData.statistics.daily_stats.length > 0) {
-        const dailyStats = statsData.statistics.daily_stats;
-        const mostActive = dailyStats.reduce((max, day) => day.total > max.total ? day : max, dailyStats[0]);
-
-        const dayNames = {
-            'Monday': 'Пн',
-            'Tuesday': 'Вт',
-            'Wednesday': 'Ср',
-            'Thursday': 'Чт',
-            'Friday': 'Пт',
-            'Saturday': 'Сб',
-            'Sunday': 'Вс'
-        };
-
-        mostActiveDay = dayNames[mostActive.day_of_week] || mostActive.day_of_week;
-    }
-    document.getElementById('mostActiveDay').textContent = mostActiveDay;
-
-    console.log('📊 Summary cards updated:', {
-        activeUsers,
-        totalActivities,
-        totalCalls,
-        totalComments,
-        avgPerDay,
-        mostActiveDay,
-        periodText
-    });
+    displayUserStats(data);
+    updateSummaryCards(data, data.start_date, data.end_date);
 }
-
 
 function displayUserStats(statsData) {
     if (!statsData?.user_stats) {
-        showError('resultsBody', 'Нет данных для отображения');
+        showNotification('Нет данных для отображения', 'error');
         return;
     }
 
@@ -293,50 +379,105 @@ function displayUserStats(statsData) {
         tbody.appendChild(row);
     });
 
-    // Обновляем все графики
     if (statsData.statistics) {
         ActivityCharts.updateAllCharts(statsData.statistics);
     }
 
-    // ОБНОВЛЯЕМ ГРАФИК СРАВНЕНИЯ
     console.log('📊 Displaying stats for', statsData.user_stats.length, 'users');
     ActivityCharts.updateComparisonChart(statsData.user_stats);
 }
 
+function updateSummaryCards(statsData, startDate, endDate) {
+    if (!statsData || !statsData.user_stats) {
+        console.error('No data for summary cards');
+        return;
+    }
+
+    const userStats = statsData.user_stats;
+    const totalActivities = statsData.total_activities || 0;
+
+    const activeUsers = userStats.filter(user => user.total > 0).length;
+    document.getElementById('activeUsers').textContent = activeUsers;
+    document.getElementById('usersMessage').textContent = `Найдено ${userStats.length} сотрудников`;
+
+    document.getElementById('totalActivities').textContent = totalActivities.toLocaleString();
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+
+    let periodText = '';
+    if (daysDiff === 1) {
+        periodText = 'за сегодня';
+    } else if (daysDiff === 7) {
+        periodText = 'за 7 дней';
+    } else if (daysDiff === 30) {
+        periodText = 'за 30 дней';
+    } else {
+        periodText = `за ${daysDiff} дней`;
+    }
+    document.getElementById('periodMessage').textContent = periodText;
+
+    const totalCalls = userStats.reduce((sum, user) => sum + (user.calls || 0), 0);
+    document.getElementById('totalCalls').textContent = totalCalls.toLocaleString();
+
+    const totalComments = userStats.reduce((sum, user) => sum + (user.comments || 0), 0);
+    document.getElementById('totalComments').textContent = totalComments.toLocaleString();
+
+    const avgPerDay = daysDiff > 0 ? (totalActivities / daysDiff).toFixed(1) : 0;
+    document.getElementById('avgPerDay').textContent = avgPerDay;
+
+    let mostActiveDay = '-';
+    if (statsData.statistics?.daily_stats?.length > 0) {
+        const dailyStats = statsData.statistics.daily_stats;
+        const mostActive = dailyStats.reduce((max, day) => day.total > max.total ? day : max, dailyStats[0]);
+        mostActiveDay = DAY_NAMES[mostActive.day_of_week] || mostActive.day_of_week;
+    }
+    document.getElementById('mostActiveDay').textContent = mostActiveDay;
+
+    console.log('📊 Summary cards updated:', {
+        activeUsers,
+        totalActivities,
+        totalCalls,
+        totalComments,
+        avgPerDay,
+        mostActiveDay,
+        periodText
+    });
+}
+
+// ========== РАБОТА С ПОЛЬЗОВАТЕЛЯМИ ==========
 async function loadUsersList() {
     try {
-        showLoading('resultsBody', 'Загрузка сотрудников...');
         const data = await BitrixAPI.getUsersList();
         if (data.users && data.users.length > 0) {
             allUsers = data.users;
         } else {
-            allUsers = [
-                { ID: '8860', NAME: 'Безина', LAST_NAME: 'Ольга' },
-                { ID: '8988', NAME: 'Фатюхина', LAST_NAME: 'Полина' },
-                { ID: '17087', NAME: 'Агапова', LAST_NAME: 'Анастасия' },
-                { ID: '17919', NAME: 'Некрасова', LAST_NAME: 'Елена' },
-                { ID: '17395', NAME: 'Вахрушева', LAST_NAME: 'Наталия' },
-                { ID: '18065', NAME: 'Прокофьева', LAST_NAME: 'Дарья' }
-            ];
+            allUsers = getDefaultUsers();
         }
         renderUserCheckboxes();
     } catch (error) {
         console.error('Ошибка загрузки сотрудников:', error);
-        allUsers = [
-            { ID: '8860', NAME: 'Безина', LAST_NAME: 'Ольга' },
-            { ID: '8988', NAME: 'Фатюхина', LAST_NAME: 'Полина' },
-            { ID: '17087', NAME: 'Агапова', LAST_NAME: 'Анастасия' },
-            { ID: '17919', NAME: 'Некрасова', LAST_NAME: 'Елена' },
-            { ID: '17395', NAME: 'Вахрушева', LAST_NAME: 'Наталия' },
-            { ID: '18065', NAME: 'Прокофьева', LAST_NAME: 'Дарья' }
-        ];
+        allUsers = getDefaultUsers();
         renderUserCheckboxes();
     }
+}
+
+function getDefaultUsers() {
+    return [
+        { ID: '8860', NAME: 'Безина', LAST_NAME: 'Ольга' },
+        { ID: '8988', NAME: 'Фатюхина', LAST_NAME: 'Полина' },
+        { ID: '17087', NAME: 'Агапова', LAST_NAME: 'Анастасия' },
+        { ID: '17919', NAME: 'Некрасова', LAST_NAME: 'Елена' },
+        { ID: '17395', NAME: 'Вахрушева', LAST_NAME: 'Наталия' },
+        { ID: '18065', NAME: 'Прокофьева', LAST_NAME: 'Дарья' }
+    ];
 }
 
 function renderUserCheckboxes() {
     const container = document.getElementById('employeesCheckboxes');
     if (!container) return;
+    
     container.innerHTML = '';
     allUsers.forEach(user => {
         const div = document.createElement('div');
@@ -349,15 +490,17 @@ function renderUserCheckboxes() {
     });
 }
 
-
-window.showUserDetails = async function (userId) {
+// ========== ДЕТАЛИЗАЦИЯ ПОЛЬЗОВАТЕЛЯ ==========
+async function showUserDetails(userId) {
     const userStats = currentUserStats[userId];
     if (!userStats) {
         alert('Данные не найдены');
         return;
     }
+    
     const panel = document.getElementById('detailsPanel');
     if (!panel) return;
+    
     panel.classList.add('active');
     panel.innerHTML = `
         <div class="details-header">
@@ -366,9 +509,11 @@ window.showUserDetails = async function (userId) {
         </div>
         <div class="details-content"><div class="loading">Загрузка...</div></div>
     `;
+    
     const closeOnEsc = (e) => { if (e.key === 'Escape') closeDetailsPanel(); };
     document.addEventListener('keydown', closeOnEsc);
     panel._escHandler = closeOnEsc;
+    
     try {
         const startDate = getElementValueSafely('startDate');
         const endDate = getElementValueSafely('endDate');
@@ -376,51 +521,13 @@ window.showUserDetails = async function (userId) {
             `/api/user-activities/${encodeURIComponent(userId)}?start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`
         );
         const data = await response.json();
+        
         if (!data.success) throw new Error(data.error || 'Ошибка API');
+        
         const activities = data.activities || [];
-        const activitiesByDay = {};
-        if (activities.length > 0) {
-            activities.forEach(activity => {
-                try {
-                    const activityDate = new Date(activity.CREATED.replace('Z', '+00:00'));
-                    const dateKey = activityDate.toISOString().split('T')[0];
-                    if (!activitiesByDay[dateKey]) activitiesByDay[dateKey] = [];
-                    let description = activity.DESCRIPTION || activity.SUBJECT || 'Без описания';
-                    description = description.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '').trim().replace(/\s+/g, ' ');
-                    activitiesByDay[dateKey].push({
-                        time: activityDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-                        type: ACTIVITY_TYPES[activity.TYPE_ID]?.name || 'Другое',
-                        type_class: ACTIVITY_TYPES[activity.TYPE_ID]?.class || 'badge-task',
-                        description: description
-                    });
-                } catch (e) {
-                    console.error('Error processing activity:', e);
-                }
-            });
-        }
-        const sortedDays = Object.keys(activitiesByDay).sort().reverse();
-        let contentHtml = '';
-        if (sortedDays.length === 0) {
-            contentHtml = '<div class="loading">Нет активностей за выбранный период</div>';
-        } else {
-            contentHtml = `<div style="margin-bottom:15px;padding:12px;background:#e7f3ff;border-radius:6px">Всего: ${data.activities_count} | Показано: ${data.activities_returned}</div>`;
-            sortedDays.forEach(day => {
-                const acts = activitiesByDay[day];
-                const date = new Date(day);
-                const dayName = date.toLocaleDateString('ru-RU', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                });
-                contentHtml += `<div class="day-group"><div class="day-header">📅 ${dayName} (${acts.length})</div>`;
-                acts.forEach(act => {
-                    const safeDesc = escapeHtml(act.description);
-                    contentHtml += `<div class="activity-item"><div class="activity-line"><span class="activity-time">${act.time}</span><span class="activity-type ${act.type_class}">${act.type}</span></div><div class="activity-description">${safeDesc}</div></div>`;
-                });
-                contentHtml += `</div>`;
-            });
-        }
+        const activitiesByDay = groupActivitiesByDay(activities);
+        const contentHtml = buildActivitiesHtml(activitiesByDay, data);
+        
         const contentDiv = panel.querySelector('.details-content');
         if (contentDiv) contentDiv.innerHTML = contentHtml;
     } catch (error) {
@@ -430,9 +537,81 @@ window.showUserDetails = async function (userId) {
             contentDiv.innerHTML = `<div class="error">Ошибка загрузки: ${escapeHtml(error.message)}</div>`;
         }
     }
-};
+}
 
-window.closeDetailsPanel = function () {
+function groupActivitiesByDay(activities) {
+    const activitiesByDay = {};
+    
+    activities.forEach(activity => {
+        try {
+            const activityDate = new Date(activity.CREATED.replace('Z', '+00:00'));
+            const dateKey = activityDate.toISOString().split('T')[0];
+            
+            if (!activitiesByDay[dateKey]) activitiesByDay[dateKey] = [];
+            
+            let description = activity.DESCRIPTION || activity.SUBJECT || 'Без описания';
+            description = description.replace(/<br\s*\/?>/gi, '\n')
+                                   .replace(/<[^>]*>/g, '')
+                                   .trim()
+                                   .replace(/\s+/g, ' ');
+            
+            activitiesByDay[dateKey].push({
+                time: activityDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+                type: ACTIVITY_TYPES[activity.TYPE_ID]?.name || 'Другое',
+                type_class: ACTIVITY_TYPES[activity.TYPE_ID]?.class || 'badge-task',
+                description: description
+            });
+        } catch (e) {
+            console.error('Error processing activity:', e);
+        }
+    });
+    
+    return activitiesByDay;
+}
+
+function buildActivitiesHtml(activitiesByDay, data) {
+    const sortedDays = Object.keys(activitiesByDay).sort().reverse();
+    
+    if (sortedDays.length === 0) {
+        return '<div class="loading">Нет активностей за выбранный период</div>';
+    }
+    
+    let contentHtml = `<div style="margin-bottom:15px;padding:12px;background:#e7f3ff;border-radius:6px">
+        Всего: ${data.activities_count} | Показано: ${data.activities_returned || data.activities?.length || 0}
+    </div>`;
+    
+    sortedDays.forEach(day => {
+        const acts = activitiesByDay[day];
+        const date = new Date(day);
+        const dayName = date.toLocaleDateString('ru-RU', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+        
+        contentHtml += `<div class="day-group">
+            <div class="day-header">📅 ${dayName} (${acts.length})</div>`;
+        
+        acts.forEach(act => {
+            const safeDesc = escapeHtml(act.description);
+            contentHtml += `
+                <div class="activity-item">
+                    <div class="activity-line">
+                        <span class="activity-time">${act.time}</span>
+                        <span class="activity-type ${act.type_class}">${act.type}</span>
+                    </div>
+                    <div class="activity-description">${safeDesc}</div>
+                </div>`;
+        });
+        
+        contentHtml += `</div>`;
+    });
+    
+    return contentHtml;
+}
+
+function closeDetailsPanel() {
     const p = document.getElementById('detailsPanel');
     if (p) {
         p.classList.remove('active');
@@ -441,59 +620,26 @@ window.closeDetailsPanel = function () {
             p._escHandler = null;
         }
     }
-};
+}
 
-// === ФУНКЦИИ АДМИНИСТРИРОВАНИЯ ===
-window.showAdminPanel = async function () {
-    if (!currentUser || !currentUser.is_admin) {
+// ========== АДМИНИСТРИРОВАНИЕ ==========
+async function showAdminPanel() {
+    if (!currentUser?.is_admin) {
         alert('❌ Требуются права администратора');
         return;
     }
 
     try {
-        // Получаем актуальное количество сотрудников
         const usersCountResponse = await BitrixAPI.getUsersCount();
         const usersCount = usersCountResponse.success ? usersCountResponse.count : allUsers.length;
-
-        const adminModal = createAdminModal(usersCount);
-        document.body.appendChild(adminModal);
-        adminModal.style.display = 'block';
+        showAdminModal(usersCount);
     } catch (error) {
         console.error('Error showing admin panel:', error);
-        const adminModal = createAdminModal(allUsers.length);
-        document.body.appendChild(adminModal);
-        adminModal.style.display = 'block';
+        showAdminModal(allUsers.length);
     }
-};
+}
 
-window.addAllowedEmail = async function () {
-    if (!currentUser || !currentUser.is_admin) {
-        alert('❌ Требуются права администратора');
-        return;
-    }
-
-    const email = prompt('Введите email для добавления в разрешенный список:');
-    if (!email) return;
-
-    if (!validateEmail(email)) {
-        alert('❌ Введите корректный email');
-        return;
-    }
-
-    try {
-        const result = await BitrixAPI.addAllowedEmail(email);
-        if (result.success) {
-            alert(`✅ Email ${email} добавлен в разрешенный список`);
-        } else {
-            alert('❌ Ошибка при добавлении email: ' + (result.error || 'Неизвестная ошибка'));
-        }
-    } catch (error) {
-        alert('❌ Ошибка при добавлении email: ' + error.message);
-    }
-};
-
-// === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
-function createAdminModal(usersCount) {
+function showAdminModal(usersCount) {
     const modal = document.createElement('div');
     modal.className = 'modal';
     modal.id = 'adminModal';
@@ -524,14 +670,14 @@ function createAdminModal(usersCount) {
         </div>
     `;
 
-    // Обработчик закрытия по клику вне модального окна
     modal.addEventListener('click', function (e) {
         if (e.target === modal) {
             closeAdminModal();
         }
     });
 
-    return modal;
+    document.body.appendChild(modal);
+    modal.style.display = 'block';
 }
 
 function closeAdminModal() {
@@ -541,8 +687,34 @@ function closeAdminModal() {
     }
 }
 
-window.showAllowedEmails = async function () {
-    if (!currentUser || !currentUser.is_admin) {
+async function addAllowedEmail() {
+    if (!currentUser?.is_admin) {
+        alert('❌ Требуются права администратора');
+        return;
+    }
+
+    const email = prompt('Введите email для добавления в разрешенный список:');
+    if (!email) return;
+
+    if (!validateEmail(email)) {
+        alert('❌ Введите корректный email');
+        return;
+    }
+
+    try {
+        const result = await BitrixAPI.addAllowedEmail(email);
+        if (result.success) {
+            alert(`✅ Email ${email} добавлен в разрешенный список`);
+        } else {
+            alert('❌ Ошибка при добавлении email: ' + (result.error || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        alert('❌ Ошибка при добавлении email: ' + error.message);
+    }
+}
+
+async function showAllowedEmails() {
+    if (!currentUser?.is_admin) {
         alert('❌ Требуются права администратора');
         return;
     }
@@ -558,7 +730,7 @@ window.showAllowedEmails = async function () {
     } catch (error) {
         alert('❌ Ошибка: ' + error.message);
     }
-};
+}
 
 function clearAllData() {
     if (confirm('⚠️ Вы уверены, что хотите очистить ВСЕ данные? Это действие нельзя отменить.')) {
@@ -569,68 +741,28 @@ function clearAllData() {
     }
 }
 
-function validateEmail(email) {
-    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return re.test(email);
-}
-
-window.showVersion = function() {
-    alert(`Версия системы: ${buildDate}`);
-};
-
-// === ГЛОБАЛЬНЫЕ ФУНКЦИИ ===
-window.applyFilters = applyFilters;
-window.login = login;
-window.register = register;
-window.logout = logout;
-window.showAuthModal = showAuthModal;
-window.clearCache = async () => {
-    if (BitrixAPI.authToken) {
-        await BitrixAPI.clearCache();
-        alert('Кэш очищен');
-        applyFilters();
-    }
-};
-window.testConnection = async () => {
-    const d = await BitrixAPI.testConnection();
-    alert(d.connected ? '✅ OK' : '❌ Ошибка');
-};
-
-// === ВСПОМОГАТЕЛЬНЫЕ ===
-function showLoading(elId, msg = 'Загрузка...') {
-    const el = document.getElementById(elId);
-    if (el) el.innerHTML = `<tr><td colspan="8" class="loading">${msg}</td></tr>`;
-}
-function showError(elId, msg) {
-    const el = document.getElementById(elId);
-    if (el) el.innerHTML = `<tr><td colspan="8" style="color:red;text-align:center">${msg}</td></tr>`;
-}
-function escapeHtml(unsafe) {
-    return typeof unsafe === 'string' ? unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "<")
-        .replace(/>/g, ">")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;") : unsafe;
-}
-
-// === АВТОРИЗАЦИЯ ===
+// ========== АВТОРИЗАЦИЯ ==========
 function showAuthModal() {
     const modal = document.getElementById('authModal');
     if (modal) modal.style.display = 'block';
 }
+
 function hideAuthModal() {
     const modal = document.getElementById('authModal');
     if (modal) modal.style.display = 'none';
 }
+
 async function login(e) {
     if (e) e.preventDefault();
+    
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
+    
     if (!email || !password) {
         alert('❌ Пожалуйста, заполните все поля');
         return false;
     }
+    
     try {
         const data = await BitrixAPI.login(email, password);
         if (data.access_token) {
@@ -644,15 +776,19 @@ async function login(e) {
     }
     return false;
 }
+
 async function register(e) {
     if (e) e.preventDefault();
+    
     const email = document.getElementById('registerEmail').value;
     const password = document.getElementById('registerPassword').value;
     const full_name = document.getElementById('registerName').value;
+    
     if (!email || !password) {
         alert('❌ Пожалуйста, заполните email и пароль');
         return false;
     }
+    
     try {
         const data = await BitrixAPI.register(email, password, full_name);
         if (data.email) {
@@ -664,6 +800,7 @@ async function register(e) {
     }
     return false;
 }
+
 function logout() {
     BitrixAPI.clearAuthToken();
     currentUser = null;
@@ -676,7 +813,6 @@ function logout() {
     alert('✅ Вы вышли из системы');
 }
 
-// Функции для переключения форм авторизации
 function showLogin() {
     document.getElementById('loginForm').style.display = 'block';
     document.getElementById('registerForm').style.display = 'none';
@@ -686,5 +822,38 @@ function showRegister() {
     document.getElementById('loginForm').style.display = 'none';
     document.getElementById('registerForm').style.display = 'block';
 }
+
+// ========== ГЛОБАЛЬНЫЕ ФУНКЦИИ ==========
+window.applyFilters = applyFilters;
+window.refreshData = refreshData;
+window.showUserDetails = showUserDetails;
+window.closeDetailsPanel = closeDetailsPanel;
+window.showAdminPanel = showAdminPanel;
+window.addAllowedEmail = addAllowedEmail;
+window.showAllowedEmails = showAllowedEmails;
+window.clearAllData = clearAllData;
+window.login = login;
+window.register = register;
+window.logout = logout;
+window.showAuthModal = showAuthModal;
+window.showLogin = showLogin;
+window.showRegister = showRegister;
+
+window.clearCache = async () => {
+    if (BitrixAPI.authToken) {
+        await BitrixAPI.clearCache();
+        alert('Кэш очищен');
+        applyFilters();
+    }
+};
+
+window.testConnection = async () => {
+    const d = await BitrixAPI.testConnection();
+    alert(d.connected ? '✅ OK' : '❌ Ошибка');
+};
+
+window.showVersion = function() {
+    alert(`Версия системы: ${buildDate}`);
+};
 
 console.log('✅ app.js loaded');

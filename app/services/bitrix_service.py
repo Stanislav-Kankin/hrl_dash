@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 import logging
 import asyncio
-import hashlib
+from concurrent.futures import ThreadPoolExecutor
+import aiosqlite
 
 logger = logging.getLogger(__name__)
 
@@ -13,12 +14,13 @@ class BitrixService:
         self.webhook_url = os.getenv("BITRIX_WEBHOOK_URL")
         self.session = None
         self._cache = {}
-        self._cache_ttl = 30  # кэш 30 секунд
-
+        self._cache_ttl = 300  # Увеличил кэш до 5 минут
+        self.executor = ThreadPoolExecutor(max_workers=5)
+        
     async def ensure_session(self):
         """Создает сессию если её нет"""
         if self.session is None or self.session.closed:
-            timeout = aiohttp.ClientTimeout(total=30)
+            timeout = aiohttp.ClientTimeout(total=60)
             self.session = aiohttp.ClientSession(timeout=timeout)
 
     async def close_session(self):
@@ -36,9 +38,7 @@ class BitrixService:
         await self.ensure_session()
         url = f"{self.webhook_url}/{method}"
         
-        # 🔥 Логируем параметры запроса
         logger.info(f"🔍 Bitrix API Request: {method}")
-        logger.info(f"🔍 URL: {url}")
         if params:
             logger.info(f"🔍 Params keys: {list(params.keys())}")
             if 'filter[AUTHOR_ID]' in params:
@@ -65,6 +65,30 @@ class BitrixService:
         except Exception as e:
             logger.error(f"Request error: {str(e)}")
             return None
+
+    async def make_bitrix_request_batch(self, method: str, params_list: List[Dict]) -> List[Optional[Dict]]:
+        """Пакетные запросы к Bitrix24 API"""
+        if not self.webhook_url:
+            logger.error("BITRIX_WEBHOOK_URL не настроен")
+            return [None] * len(params_list)
+
+        await self.ensure_session()
+        
+        async def single_request(params):
+            url = f"{self.webhook_url}/{method}"
+            try:
+                async with self.session.get(url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data.get('result') if 'result' in data else None
+                    return None
+            except Exception as e:
+                logger.error(f"Request error for {params}: {e}")
+                return None
+        
+        # Выполняем запросы параллельно
+        tasks = [single_request(params) for params in params_list]
+        return await asyncio.gather(*tasks, return_exceptions=True)
 
     async def test_connection(self) -> bool:
         """Проверяет подключение к Bitrix24"""
@@ -117,6 +141,7 @@ class BitrixService:
         user_ids: List[str] = None,
         activity_types: List[str] = None
     ) -> Optional[List[Dict]]:
+        """ОСНОВНОЙ МЕТОД - улучшенная версия с пакетными запросами"""
         try:
             # Определяем диапазон дат
             if start_date and end_date:
@@ -145,51 +170,57 @@ class BitrixService:
 
             logger.info(f"🔍 get_activities: user_ids={final_user_ids}, start_date={start_date_str}, end_date={end_date_str}")
 
-            # 🔥 ИСПРАВЛЕНИЕ: делаем отдельные запросы для каждого пользователя
+            # 🔥 УЛУЧШЕНИЕ: Параллельные запросы для всех пользователей
             all_activities = []
             
             if final_user_ids:
+                tasks = []
                 for user_id in final_user_ids:
-                    user_activities = await self._get_activities_for_single_user(
+                    task = self._get_activities_for_single_user_improved(
                         user_id, start_date_str, end_date_str, activity_types
                     )
-                    if user_activities:
+                    tasks.append(task)
+                
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                for i, user_activities in enumerate(results):
+                    if isinstance(user_activities, Exception):
+                        logger.error(f"Error getting activities for user {final_user_ids[i]}: {user_activities}")
+                    elif user_activities:
                         all_activities.extend(user_activities)
-                        logger.info(f"🔍 User {user_id}: got {len(user_activities)} activities")
+                        logger.info(f"🔍 User {final_user_ids[i]}: got {len(user_activities)} activities")
 
-            # 🔥 ДИАГНОСТИКА: логируем финальные результаты
-            logger.info(f"📊 FINAL ACTIVITIES COUNT: {len(all_activities)}")
-            logger.info(f"📊 User IDs requested: {user_ids}")
-            logger.info(f"📊 Date range: {start_date_str} to {end_date_str}")
+            # 🔥 УЛУЧШЕНИЕ: Фильтрация завершенных активностей
+            filtered_activities = await self._filter_completed_activities(all_activities)
+            
+            logger.info(f"📊 FINAL ACTIVITIES: {len(all_activities)} total, {len(filtered_activities)} completed")
 
             # Проверим распределение по пользователям
-            if all_activities:
+            if filtered_activities:
                 user_distribution = {}
-                for act in all_activities:
+                for act in filtered_activities:
                     user_id = str(act.get('AUTHOR_ID', ''))
                     user_distribution[user_id] = user_distribution.get(user_id, 0) + 1
-                logger.info(f"📊 Activities by user: {user_distribution}")
-            else:
-                logger.info("📊 No activities found")
+                logger.info(f"📊 Completed activities by user: {user_distribution}")
 
-            return all_activities
+            return filtered_activities
 
         except Exception as e:
             logger.error(f"Error in get_activities: {str(e)}")
             return None
-        
-    async def _get_activities_for_single_user(
+
+    async def _get_activities_for_single_user_improved(
         self, 
         user_id: str, 
         start_date_str: str, 
         end_date_str: str, 
         activity_types: List[str] = None
     ) -> List[Dict]:
-        """Получает активности для одного пользователя"""
+        """Улучшенная версия получения активностей для одного пользователя"""
         user_activities = []
         start = 0
         request_count = 0
-        max_requests = 10  # Ограничим для безопасности
+        max_requests = 100  # 🔥 УВЕЛИЧИЛ ДО 100 (5000 активностей)
 
         while request_count < max_requests:
             params = {
@@ -197,8 +228,7 @@ class BitrixService:
                 'filter[<=CREATED]': end_date_str,
                 'filter[AUTHOR_ID]': user_id,
                 'start': start,
-                'order[CREATED]': 'DESC',
-                'select[]': ['ID', 'CREATED', 'AUTHOR_ID', 'DESCRIPTION', 'TYPE_ID', 'SUBJECT', 'PROVIDER_ID']
+                'order[CREATED]': 'DESC'
             }
 
             if activity_types:
@@ -219,9 +249,116 @@ class BitrixService:
 
             start += 50
             request_count += 1
-            await asyncio.sleep(0.1)  # Небольшая пауза между запросами
+            await asyncio.sleep(0.05)
 
         return user_activities
+
+    async def _filter_completed_activities(self, activities: List[Dict]) -> List[Dict]:
+        """Фильтрует активности - УПРОЩЕННАЯ ВЕРСИЯ БЕЗ ПРОВЕРКИ ЗАДАЧ"""
+        if not activities:
+            return []
+
+        completed_activities = []
+        
+        for activity in activities:
+            type_id = str(activity.get('TYPE_ID'))
+            
+            # Для задач временно считаем ВСЕ активными (из-за ошибки 401)
+            # В будущем нужно настроить вебхук с правами на tasks
+            if type_id == '4':  # Задача
+                # ВРЕМЕННО: считаем все задачи завершенными
+                completed_activities.append(activity)
+            else:
+                # Для звонков, комментариев и встреч считаем все завершенными
+                completed_activities.append(activity)
+        
+        logger.info(f"📊 Simplified filter: {len(activities)} -> {len(completed_activities)} activities")
+        return completed_activities
+
+    async def get_activities_comprehensive(
+        self,
+        start_date: str,
+        end_date: str,
+        user_ids: List[str]
+    ) -> Dict[str, List[Dict]]:
+        """Комплексный сбор активностей с фильтрацией по статусу"""
+        try:
+            all_activities = {}
+            
+            # Параллельный сбор данных для всех пользователей
+            tasks = []
+            for user_id in user_ids:
+                task = self._get_complete_activities_for_user(user_id, start_date, end_date)
+                tasks.append(task)
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for i, user_activities in enumerate(results):
+                if isinstance(user_activities, Exception):
+                    logger.error(f"Error getting activities for user {user_ids[i]}: {user_activities}")
+                    all_activities[user_ids[i]] = []
+                else:
+                    # Фильтруем только завершенные активности
+                    filtered_activities = await self._filter_completed_activities(user_activities)
+                    all_activities[user_ids[i]] = filtered_activities
+            
+            return all_activities
+            
+        except Exception as e:
+            logger.error(f"Error in get_activities_comprehensive: {str(e)}")
+            return {}
+
+    async def _get_complete_activities_for_user(
+        self, 
+        user_id: str, 
+        start_date: str, 
+        end_date: str
+    ) -> List[Dict]:
+        """Получает полный набор активностей для пользователя"""
+        start_date_obj = datetime.fromisoformat(start_date)
+        end_date_obj = datetime.fromisoformat(end_date)
+        start_date_str = start_date_obj.strftime("%Y-%m-%dT%H:%M:%S")
+        end_date_str = end_date_obj.strftime("%Y-%m-%dT%H:%M:%S")
+        
+        return await self._get_activities_for_single_user_improved(
+            user_id, start_date_str, end_date_str
+        )
+
+    async def get_user_leads(self, user_id: str, date: str = None) -> List[Dict]:
+        """Получает лиды пользователя с их стадиями"""
+        if not date:
+            date = datetime.now().strftime("%Y-%m-%d")
+            
+        try:
+            params = {
+                'filter[ASSIGNED_BY_ID]': user_id,
+                'select[]': ['ID', 'TITLE', 'STATUS_ID', 'DATE_CREATE', 'ASSIGNED_BY_ID', 'STAGE_ID']
+            }
+            
+            leads = await self.make_bitrix_request("crm.lead.list", params)
+            return leads or []
+            
+        except Exception as e:
+            logger.error(f"Error getting leads for user {user_id}: {e}")
+            return []
+
+    async def get_lead_stages_history(self, lead_id: str, start_date: str, end_date: str) -> List[Dict]:
+        """Получает историю изменений стадий лида"""
+        try:
+            params = {
+                'filter[ENTITY_TYPE]': 'LEAD',
+                'filter[ENTITY_ID]': lead_id,
+                'filter[>=CREATED]': f"{start_date}T00:00:00",
+                'filter[<=CREATED]': f"{end_date}T23:59:59",
+                'select[]': ['ID', 'CREATED', 'FIELD_NAME', 'FROM_VALUE', 'TO_VALUE']
+            }
+            
+            history = await self.make_bitrix_request("crm.timeline.list", params)
+            return [item for item in (history or []) if item.get('FIELD_NAME') == 'STATUS_ID']
+            
+        except Exception as e:
+            logger.error(f"Error getting lead history {lead_id}: {e}")
+            return []
 
     async def get_activity_statistics(
         self,

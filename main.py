@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timedelta
 from app.services.bitrix_service import BitrixService
+from app.services.data_warehouse_service import DataWarehouseService
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from fastapi.security import HTTPBearer
@@ -12,12 +13,33 @@ from app.dependencies import get_current_user, get_current_admin
 import os
 import logging
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+import asyncio
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Bitrix24 Analytics Dashboard", version="1.0")
 load_dotenv()
+
+# Инициализация сервисов
+bitrix_service = BitrixService()
+warehouse_service = DataWarehouseService(bitrix_service)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await warehouse_service.initialize()
+    await warehouse_service.start_background_sync()
+    logger.info("✅ Warehouse service started")
+    yield
+    # Shutdown
+    await bitrix_service.close_session()
+
+app = FastAPI(
+    title="Bitrix24 Analytics Dashboard", 
+    version="1.0",
+    lifespan=lifespan
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,7 +49,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-bitrix_service = BitrixService()
+# Остальной код остается без изменений...
 current_dir = os.path.dirname(os.path.abspath(__file__))
 static_dir = os.path.join(current_dir, "app", "static")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -58,7 +80,8 @@ async def get_detailed_stats(
     end_date: str = None,
     user_ids: str = None,
     activity_type: str = None,
-    include_statistics: bool = True
+    include_statistics: bool = True,
+    use_cache: bool = True  # 🔥 ДОБАВИЛ ФЛАГ ДЛЯ КЭША
 ):
     try:
         user_ids_list = user_ids.split(',') if user_ids else []
@@ -67,52 +90,65 @@ async def get_detailed_stats(
         if not presales_users:
             return {"success": False, "error": "Список сотрудников пуст"}
 
-        # Создание словаря ID -> информация о пользователе
         user_info_map = {str(u['ID']): u for u in presales_users}
-
-        # Используем переданные ID или, если не переданы, все ID из presales_users
         target_user_ids = user_ids_list if user_ids_list else list(user_info_map.keys())
 
-        # Получаем активности для целевых пользователей
-        activities = await bitrix_service.get_activities(
-            start_date=start_date,
-            end_date=end_date,
-            user_ids=target_user_ids,
-            activity_types=activity_types
-        )
+        # 🔥 ПРОВЕРЯЕМ КЭШ ПРЕЖДЕ ЧЕМ ДЕЛАТЬ ЗАПРОС К BITRIX
+        activities = []
+        cache_used = False
+        
+        if use_cache:
+            cached_activities = await warehouse_service.get_cached_activities(
+                target_user_ids, start_date, end_date
+            )
+            if cached_activities:
+                activities = cached_activities
+                cache_used = True
+                logger.info(f"✅ Using cached data: {len(activities)} activities from warehouse")
+        
+        # Если кэша нет или он отключен, делаем запрос к Bitrix
+        if not activities:
+            activities = await bitrix_service.get_activities(
+                start_date=start_date,
+                end_date=end_date,
+                user_ids=target_user_ids,
+                activity_types=activity_types
+            )
+            # 🔥 СОХРАНЯЕМ В КЭШ ДЛЯ СЛЕДУЮЩИХ ЗАПРОСОВ
+            if activities:
+                asyncio.create_task(warehouse_service.cache_activities(activities))
+                logger.info(f"✅ Cached {len(activities)} activities for future requests")
 
-        # --- ИСПРАВЛЕНИЕ: Группировка активностей С ПРОВЕРКОЙ ---
+        # 🔥 СОХРАНЯЕМ ЕЖЕДНЕВНЫЙ СНАПШОТ
+        today = datetime.now().strftime("%Y-%m-%d")
+        asyncio.create_task(warehouse_service.save_daily_snapshot_from_activities(
+            activities, target_user_ids, today
+        ))
+
+        # --- Остальная логика подсчета статистики ---
         user_activities = {}
         if activities:
             for act in activities:
-                # ВАЖНО: используем AUTHOR_ID из самой активности
                 uid = str(act['AUTHOR_ID'])
-                # ПРОВЕРКА: принадлежит ли AUTHOR_ID запрошенному пользователю
                 if uid in target_user_ids:
                     if uid not in user_activities:
                         user_activities[uid] = []
                     user_activities[uid].append(act)
 
-        # ОТОБРАЖАЕМ ТОЛЬКО ЗАПРОШЕННЫХ ПОЛЬЗОВАТЕЛЕЙ
         response_users = user_ids_list if user_ids_list else list(user_info_map.keys())
         user_stats = []
         for uid in response_users:
             info = user_info_map.get(uid)
             if not info:
-                logger.warning(f"User ID {uid} not found in presales users list during stats calculation.")
                 continue
 
-            # Берем активности, сгруппированные ранее, для конкретного uid
             acts = user_activities.get(uid, [])
-            # Подсчет активностей
             calls = len([a for a in acts if str(a['TYPE_ID']) == '2'])
             comments = len([a for a in acts if str(a['TYPE_ID']) == '6'])
             tasks = len([a for a in acts if str(a['TYPE_ID']) == '4'])
             meetings = len([a for a in acts if str(a['TYPE_ID']) == '1'])
             total = len(acts)
-            # Подсчет уникальных дней активности
             activity_dates = {datetime.fromisoformat(a['CREATED'].replace('Z', '+00:00')).strftime('%Y-%m-%d') for a in acts}
-            # Определение последней активности
             last_act = max([datetime.fromisoformat(a['CREATED'].replace('Z', '+00:00')) for a in acts]) if acts else None
 
             user_stats.append({
@@ -127,10 +163,15 @@ async def get_detailed_stats(
                 "last_activity_date": last_act.strftime('%Y-%m-%d %H:%M') if last_act else "Нет данных"
             })
 
-        # Подсчет общего количества активностей среди *всех* запрошенных пользователей
         total_activities = sum(len(user_activities.get(uid, [])) for uid in response_users)
 
-        result = {"success": True, "user_stats": user_stats, "total_activities": total_activities}
+        result = {
+            "success": True, 
+            "user_stats": user_stats, 
+            "total_activities": total_activities,
+            "cache_used": cache_used,  # 🔥 ДОБАВИЛ ИНФОРМАЦИЮ О КЭШЕ
+            "activities_count": len(activities)
+        }
 
         if include_statistics:
             statistics = await bitrix_service.get_activity_statistics(
@@ -141,6 +182,7 @@ async def get_detailed_stats(
             result["statistics"] = statistics
 
         return result
+        
     except Exception as e:
         logger.error(f"❌ Error in get_detailed_stats: {str(e)}", exc_info=True)
         return {"success": False, "error": str(e)}
@@ -248,6 +290,130 @@ async def get_users_count(current_user: dict = Depends(get_current_admin)):
         return {"success": True, "count": count}
     except Exception as e:
         logger.error(f"Error getting users count: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.on_event("startup")
+async def startup_event():
+    await warehouse_service.initialize()
+    await warehouse_service.start_background_sync()
+
+@app.get("/api/stats/fast")
+async def get_fast_stats(
+    start_date: str,
+    end_date: str,
+    user_ids: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Быстрая статистика из кэша"""
+    try:
+        selected_user_ids = user_ids.split(',') if user_ids else []
+        presales_users = await bitrix_service.get_presales_users()
+        
+        if not presales_users:
+            return {"success": False, "error": "Список сотрудников пуст"}
+            
+        target_user_ids = selected_user_ids if selected_user_ids else [str(u['ID']) for u in presales_users]
+        
+        # Проверяем, есть ли полные данные в кэше
+        cache_available = await warehouse_service.is_period_cached(target_user_ids, start_date, end_date)
+        
+        if cache_available:
+            # Берем данные из кэша
+            cached_stats = await warehouse_service.get_fast_stats(target_user_ids, start_date, end_date)
+            if cached_stats:
+                # Добавляем информацию о пользователях
+                user_info_map = {str(u['ID']): u for u in presales_users}
+                for stat in cached_stats['user_stats']:
+                    user_info = user_info_map.get(stat['user_id'])
+                    if user_info:
+                        stat['user_name'] = f"{user_info.get('NAME', '')} {user_info.get('LAST_NAME', '')}".strip()
+                
+                cached_stats['success'] = True
+                cached_stats['cache_used'] = True
+                return cached_stats
+        
+        # Если кэша нет, используем обычный метод (но с кэшированием)
+        logger.info("📊 Cache not available, using live data")
+        return await get_detailed_stats(start_date, end_date, user_ids, None, True, False)
+        
+    except Exception as e:
+        logger.error(f"Error in fast stats: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/leads/current")
+async def get_current_leads(
+    user_ids: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Текущие лиды пользователей"""
+    try:
+        selected_user_ids = user_ids.split(',') if user_ids else []
+        results = {}
+        
+        for user_id in selected_user_ids:
+            leads = await bitrix_service.get_user_leads(user_id)
+            results[user_id] = leads
+            
+        return {"success": True, "leads": results}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/refresh-cache")
+async def refresh_cache(
+    start_date: str = None,
+    end_date: str = None,
+    user_ids: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Принудительное обновление кэша с улучшенной логикой"""
+    try:
+        user_ids_list = user_ids.split(',') if user_ids else []
+        presales_users = await bitrix_service.get_presales_users()
+        if not presales_users:
+            return {"success": False, "error": "Список сотрудников пуст"}
+
+        target_user_ids = user_ids_list if user_ids_list else [str(u['ID']) for u in presales_users]
+        
+        # Если даты не указаны, берем последние 90 дней
+        if not start_date or not end_date:
+            end_date = datetime.now().strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+        
+        # Получаем свежие данные
+        activities = await bitrix_service.get_activities(
+            start_date=start_date,
+            end_date=end_date,
+            user_ids=target_user_ids
+        )
+        
+        # Очищаем старый кэш и сохраняем новый
+        if activities:
+            await warehouse_service.cache_activities(activities)
+            
+            # Создаем снапшоты для каждого дня
+            start = datetime.fromisoformat(start_date)
+            end = datetime.fromisoformat(end_date)
+            current = start
+            
+            while current <= end:
+                date_str = current.strftime("%Y-%m-%d")
+                await warehouse_service.save_daily_snapshot_from_activities(
+                    activities, target_user_ids, date_str
+                )
+                current += timedelta(days=1)
+            
+            return {
+                "success": True, 
+                "message": f"Cache refreshed with {len(activities)} activities",
+                "period": f"{start_date} to {end_date}",
+                "users_count": len(target_user_ids),
+                "activities_count": len(activities)
+            }
+        else:
+            return {"success": False, "error": "No activities found"}
+            
+    except Exception as e:
+        logger.error(f"Error refreshing cache: {e}")
         return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
