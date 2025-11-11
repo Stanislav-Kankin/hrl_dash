@@ -268,18 +268,27 @@ async function loadData() {
         const end = new Date(endDate);
         const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
         
-        // 🔥 АДАПТИВНЫЕ ТАЙМАУТЫ
+        // 🔥 АДАПТИВНЫЕ ТАЙМАУТЫ ДЛЯ БОЛЬШИХ ПЕРИОДОВ
         const getTimeout = () => {
             if (daysDiff <= 1) return 30000; // 30 сек для 1 дня
             if (daysDiff <= 7) return 45000; // 45 сек для недели
             if (daysDiff <= 30) return 60000; // 60 сек для месяца
-            return 90000; // 90 сек для больших периодов
+            if (daysDiff <= 90) return 120000; // 2 минуты для квартала
+            return 180000; // 3 минуты для больших периодов
         };
         
         const timeoutMs = getTimeout();
         console.log(`⏰ Period: ${daysDiff} days, timeout: ${timeoutMs}ms`);
         
-        // 🔥 ИСПОЛЬЗУЕМ УНИВЕРСАЛЬНЫЙ ЭНДПОИНТ
+        // 🔥 ПРЕДУПРЕЖДЕНИЕ ДЛЯ БОЛЬШИХ ПЕРИОДОВ
+        if (daysDiff > 30) {
+            if (!confirm(`Вы запрашиваете данные за ${daysDiff} дней. Это может занять несколько минут. Продолжить?`)) {
+                hideLoading();
+                return;
+            }
+            showLoading(`Загрузка данных за ${daysDiff} дней... Это может занять несколько минут`);
+        }
+        
         let url = `/api/stats/main?start_date=${startDate}&end_date=${endDate}&include_statistics=true`;
         if (selectedUsers.length > 0) {
             url += `&user_ids=${selectedUsers.join(',')}`;
@@ -317,9 +326,9 @@ async function loadData() {
         console.error('❌ Error loading data:', error);
         
         if (error.name === 'TimeoutError') {
-            showNotification(`⏰ Превышено время ожидания (${error.message})`, 'error');
+            showNotification(`⏰ Превышено время ожидания (${error.message}). Попробуйте меньший период или используйте кэш`, 'error');
         } else if (error.message.includes('504')) {
-            showNotification('🌐 Сервер не отвечает (Gateway Timeout)', 'error');
+            showNotification('🌐 Сервер не отвечает (Gateway Timeout). Попробуйте меньший период', 'error');
         } else if (error.message.includes('JSON')) {
             showNotification('📄 Ошибка формата данных от сервера', 'error');
         } else {
@@ -335,6 +344,7 @@ async function loadData() {
                         ❌ Ошибка загрузки данных<br>
                         <small>${error.message}</small><br>
                         <button onclick="loadData()" style="margin-top:15px">🔄 Попробовать снова</button>
+                        ${daysDiff > 30 ? '<br><small>Рекомендуется выбрать меньший период</small>' : ''}
                     </td>
                 </tr>
             `;
@@ -855,6 +865,183 @@ function showRegister() {
     document.getElementById('registerForm').style.display = 'block';
 }
 
+// ========== БЫСТРАЯ ЗАГРУЗКА ==========
+async function loadDataFast() {
+    showLoading('Быстрая загрузка из кэша...');
+    
+    const selectedUsers = getSelectedUsers();
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    const activityType = document.getElementById('activityTypeSelect').value;
+    
+    if (!startDate || !endDate) {
+        alert('Пожалуйста, выберите диапазон дат');
+        hideLoading();
+        return;
+    }
+    
+    try {
+        let url = `/api/stats/fast?start_date=${startDate}&end_date=${endDate}&include_statistics=true`;
+        if (selectedUsers.length > 0) {
+            url += `&user_ids=${selectedUsers.join(',')}`;
+        }
+        if (activityType !== 'all') {
+            url += `&activity_type=${activityType}`;
+        }
+        
+        console.log('⚡ Fast loading from cache:', url);
+        
+        const response = await fetchWithTimeout(url, {
+            headers: getAuthHeaders(),
+            timeout: 10000 // 10 секунд для быстрой загрузки
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            if (data.from_cache) {
+                displayResults(data);
+                showNotification('✅ Данные загружены из кэша', 'success');
+            } else {
+                // Если данных в кэше нет
+                const shouldLoad = confirm('❌ Данные за выбранный период не найдены в кэше. Загрузить из Bitrix?');
+                if (shouldLoad) {
+                    await loadDataFromBitrix();
+                }
+            }
+        } else {
+            throw new Error(data.error || 'Unknown error from server');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error in fast load:', error);
+        
+        if (error.message.includes('504') || error.message.includes('Timeout')) {
+            showNotification('🌐 Сервер не отвечает. Попробуйте позже', 'error');
+        } else {
+            showNotification('❌ Ошибка быстрой загрузки: ' + error.message, 'error');
+        }
+        
+        showEmptyTableWithError(error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+// ========== ЗАГРУЗКА ИЗ BITRIX ==========
+async function loadDataFromBitrix() {
+    showLoading('Загрузка данных из Bitrix...');
+    
+    const selectedUsers = getSelectedUsers();
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    const activityType = document.getElementById('activityTypeSelect').value;
+    
+    if (!startDate || !endDate) {
+        alert('Пожалуйста, выберите диапазон дат');
+        hideLoading();
+        return;
+    }
+    
+    try {
+        // 🔥 РАСЧИТЫВАЕМ ДЛИТЕЛЬНОСТЬ ПЕРИОДА ДЛЯ ТАЙМАУТА
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+        
+        // 🔥 АДАПТИВНЫЕ ТАЙМАУТЫ ДЛЯ БОЛЬШИХ ПЕРИОДОВ
+        const getTimeout = () => {
+            if (daysDiff <= 1) return 30000;
+            if (daysDiff <= 7) return 45000;
+            if (daysDiff <= 30) return 60000;
+            if (daysDiff <= 90) return 120000;
+            return 180000;
+        };
+        
+        const timeoutMs = getTimeout();
+        console.log(`⏰ Period: ${daysDiff} days, timeout: ${timeoutMs}ms`);
+        
+        // 🔥 ПРЕДУПРЕЖДЕНИЕ ДЛЯ БОЛЬШИХ ПЕРИОДОВ
+        if (daysDiff > 30) {
+            if (!confirm(`Вы запрашиваете данные за ${daysDiff} дней. Это может занять несколько минут. Продолжить?`)) {
+                hideLoading();
+                return;
+            }
+            showLoading(`Загрузка данных за ${daysDiff} дней из Bitrix... Это может занять несколько минут`);
+        }
+        
+        let url = `/api/stats/main?start_date=${startDate}&end_date=${endDate}&include_statistics=true&force_refresh=true`;
+        if (selectedUsers.length > 0) {
+            url += `&user_ids=${selectedUsers.join(',')}`;
+        }
+        if (activityType !== 'all') {
+            url += `&activity_type=${activityType}`;
+        }
+        
+        console.log('🔄 Loading data from Bitrix:', url);
+        
+        const response = await fetchWithTimeout(url, {
+            headers: getAuthHeaders(),
+            timeout: timeoutMs
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            displayResults(data);
+            
+            if (data.cache_used) {
+                showNotification('✅ Данные загружены из кэша', 'success');
+            } else {
+                showNotification('📊 Данные загружены из Bitrix и сохранены в кэш', 'info');
+            }
+        } else {
+            throw new Error(data.error || 'Unknown error from server');
+        }
+        
+    } catch (error) {
+        console.error('❌ Error loading from Bitrix:', error);
+        
+        if (error.name === 'TimeoutError') {
+            showNotification(`⏰ Превышено время ожидания. Попробуйте меньший период`, 'error');
+        } else if (error.message.includes('504')) {
+            showNotification('🌐 Сервер не отвечает (Gateway Timeout). Попробуйте меньший период', 'error');
+        } else {
+            showNotification('❌ Ошибка загрузки из Bitrix: ' + error.message, 'error');
+        }
+        
+        showEmptyTableWithError(error.message, daysDiff > 30);
+    } finally {
+        hideLoading();
+    }
+}
+
+// ========== УТИЛИТА ДЛЯ ПУСТОЙ ТАБЛИЦЫ С ОШИБКОЙ ==========
+function showEmptyTableWithError(errorMessage, isLargePeriod = false) {
+    const tbody = document.getElementById('resultsBody');
+    if (tbody) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" style="text-align:center;padding:40px;color:#f56565">
+                    ❌ Ошибка загрузки данных<br>
+                    <small>${errorMessage}</small><br>
+                    <button onclick="loadDataFromBitrix()" style="margin-top:15px;margin-right:10px">🔄 Попробовать снова</button>
+                    <button onclick="loadDataFast()" style="margin-top:15px">⚡ Быстрая загрузка</button>
+                    ${isLargePeriod ? '<br><small>Рекомендуется выбрать меньший период</small>' : ''}
+                </td>
+            </tr>
+        `;
+    }
+}
+
 // ========== ГЛОБАЛЬНЫЕ ФУНКЦИИ ==========
 window.loadData = loadData;
 window.showUserDetails = showUserDetails;
@@ -869,6 +1056,9 @@ window.logout = logout;
 window.showAuthModal = showAuthModal;
 window.showLogin = showLogin;
 window.showRegister = showRegister;
+// Добавьте в конец файла
+window.loadDataFast = loadDataFast;
+window.loadDataFromBitrix = loadDataFromBitrix;
 
 window.clearCache = async () => {
     if (BitrixAPI.authToken) {

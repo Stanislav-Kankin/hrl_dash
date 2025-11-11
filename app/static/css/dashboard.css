@@ -632,3 +632,27 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .filter-item > label {
     margin-bottom: 8px;
 }
+
+.load-btn {
+    background: linear-gradient(135deg, #48bb78, #38a169);
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: transform 0.2s;
+    white-space: nowrap;
+}
+
+.load-btn:hover {
+    transform: translateY(-2px);
+    background: linear-gradient(135deg, #38a169, #2f855a);
+}
+
+.load-btn:disabled {
+    background: #a0aec0;
+    cursor: not-allowed;
+    transform: none;
+}

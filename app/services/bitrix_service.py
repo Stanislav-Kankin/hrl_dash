@@ -16,11 +16,13 @@ class BitrixService:
         self._cache = {}
         self._cache_ttl = 10 * 60
         self.executor = ThreadPoolExecutor(max_workers=5)
+        self.max_activities_per_user = 1000  # 🔥 ОГРАНИЧЕНИЕ на количество активностей на пользователя
+        self.max_days_per_request = 30  # 🔥 Максимальный период в днях для одного запроса
         
     async def ensure_session(self):
         """Создает сессию если её нет"""
         if self.session is None or self.session.closed:
-            timeout = aiohttp.ClientTimeout(total=60)
+            timeout = aiohttp.ClientTimeout(total=120)  # 🔥 Увеличиваем таймаут до 2 минут
             self.session = aiohttp.ClientSession(timeout=timeout)
 
     async def close_session(self):
@@ -117,7 +119,7 @@ class BitrixService:
         user_ids: List[str] = None,
         activity_types: List[str] = None
     ) -> Optional[List[Dict]]:
-        """ОСНОВНОЙ МЕТОД - получение активностей БЕЗ ЛИМИТОВ"""
+        """ОСНОВНОЙ МЕТОД - получение активностей с ОГРАНИЧЕНИЯМИ для больших периодов"""
         try:
             # Определяем диапазон дат
             if start_date and end_date:
@@ -125,9 +127,25 @@ class BitrixService:
                 end_date_obj = datetime.fromisoformat(end_date)
                 start_date_obj = start_date_obj.replace(hour=0, minute=0, second=0, microsecond=0)
                 end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59, microsecond=999999)
+                
+                # 🔥 ПРОВЕРКА: если период больше максимального - разбиваем на части
+                total_days = (end_date_obj - start_date_obj).days + 1
+                if total_days > self.max_days_per_request:
+                    logger.info(f"📅 Large period detected: {total_days} days, splitting into chunks...")
+                    return await self._get_activities_large_period(
+                        start_date_obj, end_date_obj, user_ids, activity_types
+                    )
+                    
             elif days:
                 end_date_obj = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
                 start_date_obj = (end_date_obj - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
+                
+                # 🔥 ПРОВЕРКА для дней
+                if days > self.max_days_per_request:
+                    logger.info(f"📅 Large period detected: {days} days, splitting into chunks...")
+                    return await self._get_activities_large_period(
+                        start_date_obj, end_date_obj, user_ids, activity_types
+                    )
             else:
                 end_date_obj = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
                 start_date_obj = (end_date_obj - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -185,6 +203,75 @@ class BitrixService:
             logger.error(f"Error in get_activities: {str(e)}")
             return None
 
+    async def _get_activities_large_period(
+        self, 
+        start_date: datetime, 
+        end_date: datetime, 
+        user_ids: List[str], 
+        activity_types: List[str] = None
+    ) -> List[Dict]:
+        """Обработка больших периодов - разбивает на части"""
+        all_activities = []
+        current_start = start_date
+        
+        while current_start <= end_date:
+            # Вычисляем конец текущего чанка
+            current_end = min(
+                current_start + timedelta(days=self.max_days_per_request - 1), 
+                end_date
+            )
+            
+            logger.info(f"📅 Processing chunk: {current_start.strftime('%Y-%m-%d')} to {current_end.strftime('%Y-%m-%d')}")
+            
+            # Получаем данные для текущего чанка
+            chunk_activities = await self._get_activities_for_period(
+                current_start, current_end, user_ids, activity_types
+            )
+            
+            if chunk_activities:
+                all_activities.extend(chunk_activities)
+                logger.info(f"📅 Chunk completed: {len(chunk_activities)} activities")
+            
+            # Переходим к следующему чанку
+            current_start = current_end + timedelta(days=1)
+            
+            # 🔥 Небольшая пауза между запросами чтобы не перегружать API
+            await asyncio.sleep(1)
+        
+        logger.info(f"📅 Large period completed: {len(all_activities)} total activities")
+        return all_activities
+
+    async def _get_activities_for_period(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+        user_ids: List[str],
+        activity_types: List[str] = None
+    ) -> List[Dict]:
+        """Получение активностей для конкретного периода"""
+        start_date_str = start_date.strftime("%Y-%m-%dT%H:%M:%S")
+        end_date_str = end_date.strftime("%Y-%m-%dT%H:%M:%S")
+        
+        all_activities = []
+        
+        if user_ids:
+            tasks = []
+            for user_id in user_ids:
+                task = self._get_activities_for_single_user(
+                    user_id, start_date_str, end_date_str, activity_types
+                )
+                tasks.append(task)
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for i, user_activities in enumerate(results):
+                if isinstance(user_activities, Exception):
+                    logger.error(f"Error getting activities for user {user_ids[i]}: {user_activities}")
+                elif user_activities:
+                    all_activities.extend(user_activities)
+        
+        return await self._filter_completed_activities(all_activities)
+
     async def _get_activities_for_single_user(
         self, 
         user_id: str, 
@@ -192,11 +279,11 @@ class BitrixService:
         end_date_str: str, 
         activity_types: List[str] = None
     ) -> List[Dict]:
-        """Получение активностей для одного пользователя БЕЗ ЛИМИТОВ"""
+        """Получение активностей для одного пользователя с ОГРАНИЧЕНИЕМ количества"""
         user_activities = []
         start = 0
         request_count = 0
-        max_requests = 200  # 🔥 УВЕЛИЧИВАЕМ ЛИМИТ ДО 200 запросов (10,000 активностей)
+        max_requests = 20  # 🔥 УМЕНЬШАЕМ максимальное количество запросов (1000 активностей)
 
         while request_count < max_requests:
             params = {
@@ -219,13 +306,18 @@ class BitrixService:
             user_activities.extend(activities)
             logger.info(f"🔍 User {user_id} - Batch {request_count + 1}: got {len(activities)} activities, total: {len(user_activities)}")
 
+            # 🔥 ПРОВЕРКА: не превысили ли максимальное количество активностей
+            if len(user_activities) >= self.max_activities_per_user:
+                logger.warning(f"⚠️ User {user_id} reached activity limit ({self.max_activities_per_user}), stopping")
+                break
+
             if len(activities) < 50:
                 logger.info(f"🔍 User {user_id} - Last batch had {len(activities)} items, stopping pagination.")
                 break
 
             start += 50
             request_count += 1
-            await asyncio.sleep(0.05)  # Небольшая задержка чтобы не перегружать API
+            await asyncio.sleep(0.1)  # 🔥 Увеличиваем задержку
 
         return user_activities
 

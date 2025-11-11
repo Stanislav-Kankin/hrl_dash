@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bitrix24 Analytics Dashboard</title>
     <script>
-        const buildDate = "2025.11.11.2.7"; // Формат: ГГГГ.ММ.ДД.ВЕРСИЯ
+        const buildDate = "2025.11.11.2.12"; // Формат: ГГГГ.ММ.ДД.ВЕРСИЯ
     </script>
 
     <button id="authButton" onclick="showAuthModal()" style="
@@ -61,8 +61,8 @@
                 <div class="filter-item" style="min-width: auto;">
                     <label style="visibility: hidden;">Действия</label>
                     <div style="display: flex; gap: 10px;">
-                        <button class="apply-btn" onclick="loadData()">📊 Загрузить</button>
-
+                        <button class="apply-btn" onclick="loadDataFast()">⚡ Быстрая загрузка</button>
+                        <button class="clear-btn" onclick="loadDataFromBitrix()">🔄 Загрузить из Bitrix</button>
                     </div>
                 </div>
             </div>

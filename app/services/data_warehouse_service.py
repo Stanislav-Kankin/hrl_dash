@@ -340,3 +340,72 @@ class DataWarehouseService:
                 logger.info(f"🧹 Cleared cache older than {cutoff_date}")
         except Exception as e:
             logger.error(f"Error clearing old cache: {e}")
+    
+    async def get_cached_activities_optimized(self, user_ids: List[str], start_date: str, end_date: str) -> Dict:
+        """
+        Умное получение данных из кэша:
+        - Возвращает то что есть в кэше
+        - Показывает какие дни нужно догрузить
+        """
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                placeholders = ','.join('?' for _ in user_ids)
+                
+                # Получаем ВСЕ данные из кэша за период
+                query = f'''
+                    SELECT raw_data, data_date FROM activities_cache 
+                    WHERE user_id IN ({placeholders}) 
+                    AND data_date BETWEEN ? AND ?
+                    ORDER BY created DESC
+                '''
+                params = user_ids + [start_date, end_date]
+                
+                cursor = await db.execute(query, params)
+                rows = await cursor.fetchall()
+                
+                if not rows:
+                    return {"activities": [], "missing_days": [], "completeness": 0}
+                
+                # Анализируем данные
+                cached_dates = set()
+                activities = []
+                
+                for row in rows:
+                    try:
+                        activity_data = json.loads(row[0])
+                        activities.append(activity_data)
+                        cached_dates.add(row[1])
+                    except Exception as e:
+                        continue
+                
+                # Определяем недостающие дни
+                start = datetime.fromisoformat(start_date)
+                end = datetime.fromisoformat(end_date)
+                total_days = (end - start).days + 1
+                
+                missing_days = []
+                current = start
+                while current <= end:
+                    date_str = current.strftime("%Y-%m-%d")
+                    if date_str not in cached_dates:
+                        missing_days.append(date_str)
+                    current += timedelta(days=1)
+                
+                completeness = ((total_days - len(missing_days)) / total_days) * 100
+                
+                logger.info(f"📊 Cache analysis: {len(activities)} activities, {completeness:.1f}% complete ({total_days - len(missing_days)}/{total_days} days)")
+                
+                if missing_days:
+                    logger.info(f"🔄 Missing days: {missing_days}")
+                
+                return {
+                    "activities": activities,
+                    "missing_days": missing_days,
+                    "completeness": completeness,
+                    "cached_days_count": len(cached_dates),
+                    "total_days": total_days
+                }
+                    
+        except Exception as e:
+            logger.error(f"Error analyzing cache: {e}")
+            return {"activities": [], "missing_days": [], "completeness": 0}
