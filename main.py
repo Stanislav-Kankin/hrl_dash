@@ -105,6 +105,7 @@ async def get_main_stats(
                 target_user_ids, start_date, end_date, activity_types
             )
 
+
             cached_activities = cache_analysis["activities"]
             completeness = cache_analysis["completeness"]
 
@@ -656,6 +657,7 @@ async def get_fast_stats(
         cache_analysis = await warehouse_service.get_cached_activities_for_selected_users(
             target_user_ids, start_date, end_date, activity_types
         )
+
         
         cached_activities = cache_analysis["activities"]
         completeness = cache_analysis["completeness"]
