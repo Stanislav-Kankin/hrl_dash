@@ -658,11 +658,20 @@ async def get_fast_stats(
         
         cached_activities = cache_analysis["activities"]
         completeness = cache_analysis["completeness"]
+        user_count = cache_analysis.get("user_count", len(target_user_ids))
 
-        # 🔥 ИСПРАВЛЕНИЕ: снижаем порог до 80% и учитываем что не все пользователи активны каждый день
-        if completeness >= 80.0:  # Было 99.0
+        # 🔥 АДАПТИВНЫЕ ПОРОГИ в зависимости от количества пользователей
+        required_completeness = 80.0  # По умолчанию
+        
+        if user_count == 1:
+            required_completeness = 60.0  # Для одного пользователя - 60% рабочих дней
+        elif user_count <= 3:
+            required_completeness = 70.0  # Для 2-3 пользователей - 70%
+        # Для 4+ пользователей остается 80%
+
+        if completeness >= required_completeness:
             activities = cached_activities
-            logger.info(f"⚡ Using cached data for {len(target_user_ids)} users: {completeness:.1f}% complete, {len(activities)} activities")
+            logger.info(f"⚡ Using cached data for {user_count} users: {completeness:.1f}% complete (required: {required_completeness}%)")
             
             # Логика подсчета статистики (остается без изменений)
             user_activities = {}
@@ -710,6 +719,7 @@ async def get_fast_stats(
                 "cache_used": True,
                 "from_cache": True,
                 "cache_completeness": completeness,
+                "required_completeness": required_completeness,
                 "activities_count": len(activities),
                 "start_date": start_date,
                 "end_date": end_date,
@@ -722,21 +732,21 @@ async def get_fast_stats(
 
             return result
         else:
-            # 🔥 Добавляем больше информации для отладки
             user_coverage_info = cache_analysis.get("user_coverage_info", {})
             coverage_details = []
             for user_id in target_user_ids:
                 coverage = user_coverage_info.get(user_id, {})
                 user_name = user_info_map.get(user_id, {}).get('NAME', 'Unknown')
-                coverage_details.append(f"{user_name}: {coverage.get('days_with_data', 0)} дней")
+                coverage_details.append(f"{user_name}: {coverage.get('days_with_data', 0)}/{coverage.get('total_days', 0)} дней")
             
             return {
                 "success": False,
                 "from_cache": False,
                 "cache_completeness": completeness,
+                "required_completeness": required_completeness,
                 "selected_users_count": len(target_user_ids),
                 "coverage_details": coverage_details,
-                "error": f"Данные в кэше неполные ({completeness:.1f}%). Используйте загрузку из Bitrix."
+                "error": f"Данные в кэше неполные ({completeness:.1f}%, требуется {required_completeness}%). Используйте загрузку из Bitrix."
             }
         
     except Exception as e:
