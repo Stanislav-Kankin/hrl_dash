@@ -331,25 +331,17 @@ async def get_fast_stats(
             
         target_user_ids = selected_user_ids if selected_user_ids else [str(u['ID']) for u in presales_users]
         
-        # 🔧 БЕЗОПАСНАЯ ПРОВЕРКА КЭША С ТАЙМАУТОМ
+        # 🔥 БЫСТРАЯ ПРОВЕРКА КЭША БЕЗ ТАЙМАУТОВ
         cache_available = False
         try:
-            cache_available = await asyncio.wait_for(
-                warehouse_service.is_period_cached(target_user_ids, start_date, end_date),
-                timeout=5.0  # 5 секунд на проверку кэша
-            )
-        except asyncio.TimeoutError:
-            logger.warning("⚠️ Cache check timeout, using live data")
+            cache_available = await warehouse_service.is_period_cached(target_user_ids, start_date, end_date)
         except Exception as e:
             logger.error(f"❌ Cache check error: {e}")
         
         if cache_available:
-            # 🔧 БЕЗОПАСНОЕ ПОЛУЧЕНИЕ ДАННЫХ ИЗ КЭША
+            # 🔥 БЫСТРОЕ ПОЛУЧЕНИЕ ДАННЫХ ИЗ КЭША
             try:
-                cached_stats = await asyncio.wait_for(
-                    warehouse_service.get_fast_stats(target_user_ids, start_date, end_date),
-                    timeout=10.0  # 10 секунд на получение кэша
-                )
+                cached_stats = await warehouse_service.get_fast_stats(target_user_ids, start_date, end_date)
                 
                 if cached_stats:
                     # Добавляем информацию о пользователях
@@ -363,14 +355,13 @@ async def get_fast_stats(
                     cached_stats['cache_used'] = True
                     cached_stats['start_date'] = start_date
                     cached_stats['end_date'] = end_date
+                    logger.info(f"✅ Fast stats from cache: {len(cached_stats['user_stats'])} users")
                     return cached_stats
                     
-            except asyncio.TimeoutError:
-                logger.warning("⚠️ Cache data retrieval timeout")
             except Exception as e:
                 logger.error(f"❌ Cache data error: {e}")
         
-        # 🔧 FALLBACK: используем обычный метод
+        # 🔥 FALLBACK: используем обычный метод
         logger.info("📊 Cache not available, using live data as fallback")
         return await get_detailed_stats(start_date, end_date, user_ids, None, True, False)
         
