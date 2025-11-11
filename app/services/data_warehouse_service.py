@@ -422,6 +422,7 @@ class DataWarehouseService:
     async def get_cached_activities_for_selected_users(self, selected_user_ids: List[str], start_date: str, end_date: str, activity_types: List[str] = None) -> Dict:
         """
         Проверяет полноту кэша ТОЛЬКО для выбранных пользователей
+        УЧИТЫВАЕТ что у разных пользователей может быть разная активность по дням
         """
         try:
             async with aiosqlite.connect(self.db_path) as db:
@@ -456,37 +457,63 @@ class DataWarehouseService:
                 for row in rows:
                     try:
                         activity_data = json.loads(row[0])
-                        # Фильтруем по выбранным пользователям на случай если в кэше есть данные других пользователей
+                        # Фильтруем по выбранным пользователям
                         if str(activity_data.get('AUTHOR_ID')) in selected_user_ids:
                             activities.append(activity_data)
                             cached_dates.add(row[1])
                     except Exception as e:
                         continue
                 
-                # Определяем недостающие дни
+                # 🔥 ИСПРАВЛЕНИЕ: проверяем не абсолютную полноту, а разумную
                 start = datetime.fromisoformat(start_date)
                 end = datetime.fromisoformat(end_date)
                 total_days = (end - start).days + 1
+                
+                # 🔥 НОВАЯ ЛОГИКА: считаем день "покрытым" если есть данные хотя бы для одного пользователя
+                user_days_coverage = {}
+                for activity in activities:
+                    user_id = str(activity.get('AUTHOR_ID'))
+                    activity_date = activity.get('CREATED', '').split('T')[0]
+                    if user_id not in user_days_coverage:
+                        user_days_coverage[user_id] = set()
+                    user_days_coverage[user_id].add(activity_date)
+                
+                # 🔥 Считаем общее покрытие дней (объединение всех дней всех пользователей)
+                all_covered_days = set()
+                for user_id, days in user_days_coverage.items():
+                    all_covered_days.update(days)
                 
                 missing_days = []
                 current = start
                 while current <= end:
                     date_str = current.strftime("%Y-%m-%d")
-                    if date_str not in cached_dates:
+                    if date_str not in all_covered_days:
                         missing_days.append(date_str)
                     current += timedelta(days=1)
                 
+                # 🔥 Более гибкий расчет полноты
                 completeness = ((total_days - len(missing_days)) / total_days) * 100
                 
-                logger.info(f"📊 Cache analysis for {len(selected_user_ids)} selected users: {len(activities)} activities, {completeness:.1f}% complete")
+                logger.info(f"📊 Cache analysis for {len(selected_user_ids)} users: {len(activities)} activities, {completeness:.1f}% complete, {len(user_days_coverage)} users have data")
+                
+                # 🔥 ДОПОЛНИТЕЛЬНАЯ ИНФОРМАЦИЯ для отладки
+                user_coverage_info = {}
+                for user_id in selected_user_ids:
+                    user_days = user_days_coverage.get(user_id, set())
+                    user_coverage_info[user_id] = {
+                        'days_with_data': len(user_days),
+                        'coverage_percent': (len(user_days) / total_days) * 100 if total_days > 0 else 0
+                    }
                 
                 return {
                     "activities": activities,
                     "missing_days": missing_days,
                     "completeness": completeness,
-                    "cached_days_count": len(cached_dates),
+                    "cached_days_count": len(all_covered_days),
                     "total_days": total_days,
-                    "selected_users": selected_user_ids
+                    "selected_users": selected_user_ids,
+                    "user_coverage_info": user_coverage_info,  # Для отладки
+                    "total_activities": len(activities)
                 }
                     
         except Exception as e:

@@ -645,40 +645,37 @@ async def get_fast_stats(
 
         user_info_map = {str(u['ID']): u for u in presales_users}
         
-        # 🔥 ВАЖНО: определяем целевых пользователей
         if user_ids_list:
-            target_user_ids = user_ids_list  # Только выбранные пользователи
+            target_user_ids = user_ids_list
         else:
-            target_user_ids = list(user_info_map.keys())  # Все пользователи
+            target_user_ids = list(user_info_map.keys())
 
         logger.info(f"⚡ Fast stats: {start_date} to {end_date}, selected users: {len(target_user_ids)}")
 
-        # 🔥 ИСПРАВЛЕНИЕ: проверяем кэш ТОЛЬКО для выбранных пользователей
         cache_analysis = await warehouse_service.get_cached_activities_for_selected_users(
             target_user_ids, start_date, end_date, activity_types
         )
-
         
         cached_activities = cache_analysis["activities"]
         completeness = cache_analysis["completeness"]
 
-        # 🔥 ТОЛЬКО если данные полностью в кэше (>99%) для ВЫБРАННЫХ пользователей
-        if completeness >= 99.0:
+        # 🔥 ИСПРАВЛЕНИЕ: снижаем порог до 80% и учитываем что не все пользователи активны каждый день
+        if completeness >= 80.0:  # Было 99.0
             activities = cached_activities
             logger.info(f"⚡ Using cached data for {len(target_user_ids)} users: {completeness:.1f}% complete, {len(activities)} activities")
             
-            # --- Логика подсчета статистики из активностей ---
+            # Логика подсчета статистики (остается без изменений)
             user_activities = {}
             if activities:
                 for act in activities:
                     uid = str(act['AUTHOR_ID'])
-                    if uid in target_user_ids:  # Фильтруем по выбранным пользователям
+                    if uid in target_user_ids:
                         if uid not in user_activities:
                             user_activities[uid] = []
                         user_activities[uid].append(act)
 
             user_stats = []
-            for uid in target_user_ids:  # Только выбранные пользователи
+            for uid in target_user_ids:
                 info = user_info_map.get(uid)
                 if not info:
                     continue
@@ -725,13 +722,21 @@ async def get_fast_stats(
 
             return result
         else:
-            # 🔥 Данных в кэше недостаточно для ВЫБРАННЫХ пользователей
+            # 🔥 Добавляем больше информации для отладки
+            user_coverage_info = cache_analysis.get("user_coverage_info", {})
+            coverage_details = []
+            for user_id in target_user_ids:
+                coverage = user_coverage_info.get(user_id, {})
+                user_name = user_info_map.get(user_id, {}).get('NAME', 'Unknown')
+                coverage_details.append(f"{user_name}: {coverage.get('days_with_data', 0)} дней")
+            
             return {
                 "success": False,
                 "from_cache": False,
                 "cache_completeness": completeness,
                 "selected_users_count": len(target_user_ids),
-                "error": f"Данные в кэше неполные для выбранных сотрудников ({completeness:.1f}%). Используйте загрузку из Bitrix."
+                "coverage_details": coverage_details,
+                "error": f"Данные в кэше неполные ({completeness:.1f}%). Используйте загрузку из Bitrix."
             }
         
     except Exception as e:
