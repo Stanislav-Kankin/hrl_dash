@@ -304,7 +304,7 @@ async def get_fast_stats(
     user_ids: str = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Быстрая статистика из кэша"""
+    """Быстрая статистика из кэша с улучшенной обработкой ошибок"""
     try:
         selected_user_ids = user_ids.split(',') if user_ids else []
         presales_users = await bitrix_service.get_presales_users()
@@ -314,30 +314,51 @@ async def get_fast_stats(
             
         target_user_ids = selected_user_ids if selected_user_ids else [str(u['ID']) for u in presales_users]
         
-        # Проверяем, есть ли полные данные в кэше
-        cache_available = await warehouse_service.is_period_cached(target_user_ids, start_date, end_date)
+        # 🔧 БЕЗОПАСНАЯ ПРОВЕРКА КЭША С ТАЙМАУТОМ
+        cache_available = False
+        try:
+            cache_available = await asyncio.wait_for(
+                warehouse_service.is_period_cached(target_user_ids, start_date, end_date),
+                timeout=5.0  # 5 секунд на проверку кэша
+            )
+        except asyncio.TimeoutError:
+            logger.warning("⚠️ Cache check timeout, using live data")
+        except Exception as e:
+            logger.error(f"❌ Cache check error: {e}")
         
         if cache_available:
-            # Берем данные из кэша
-            cached_stats = await warehouse_service.get_fast_stats(target_user_ids, start_date, end_date)
-            if cached_stats:
-                # Добавляем информацию о пользователях
-                user_info_map = {str(u['ID']): u for u in presales_users}
-                for stat in cached_stats['user_stats']:
-                    user_info = user_info_map.get(stat['user_id'])
-                    if user_info:
-                        stat['user_name'] = f"{user_info.get('NAME', '')} {user_info.get('LAST_NAME', '')}".strip()
+            # 🔧 БЕЗОПАСНОЕ ПОЛУЧЕНИЕ ДАННЫХ ИЗ КЭША
+            try:
+                cached_stats = await asyncio.wait_for(
+                    warehouse_service.get_fast_stats(target_user_ids, start_date, end_date),
+                    timeout=10.0  # 10 секунд на получение кэша
+                )
                 
-                cached_stats['success'] = True
-                cached_stats['cache_used'] = True
-                return cached_stats
+                if cached_stats:
+                    # Добавляем информацию о пользователях
+                    user_info_map = {str(u['ID']): u for u in presales_users}
+                    for stat in cached_stats['user_stats']:
+                        user_info = user_info_map.get(stat['user_id'])
+                        if user_info:
+                            stat['user_name'] = f"{user_info.get('NAME', '')} {user_info.get('LAST_NAME', '')}".strip()
+                    
+                    cached_stats['success'] = True
+                    cached_stats['cache_used'] = True
+                    cached_stats['start_date'] = start_date
+                    cached_stats['end_date'] = end_date
+                    return cached_stats
+                    
+            except asyncio.TimeoutError:
+                logger.warning("⚠️ Cache data retrieval timeout")
+            except Exception as e:
+                logger.error(f"❌ Cache data error: {e}")
         
-        # Если кэша нет, используем обычный метод (но с кэшированием)
-        logger.info("📊 Cache not available, using live data")
+        # 🔧 FALLBACK: используем обычный метод
+        logger.info("📊 Cache not available, using live data as fallback")
         return await get_detailed_stats(start_date, end_date, user_ids, None, True, False)
         
     except Exception as e:
-        logger.error(f"Error in fast stats: {e}")
+        logger.error(f"❌ Error in fast stats: {e}")
         return {"success": False, "error": str(e)}
 
 @app.get("/api/leads/current")

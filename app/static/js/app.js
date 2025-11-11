@@ -264,44 +264,123 @@ async function applyFilters(useFastStats = true) {
     
     try {
         let url;
+        let fallbackToDetailed = false;
+        
         if (useFastStats) {
+            // Пытаемся использовать быстрый эндпоинт с таймаутом
             url = `/api/stats/fast?start_date=${startDate}&end_date=${endDate}`;
             if (selectedUsers.length > 0) {
                 url += `&user_ids=${selectedUsers.join(',')}`;
             }
-        } else {
-            url = `/api/stats/detailed?start_date=${startDate}&end_date=${endDate}&include_statistics=true`;
-            if (selectedUsers.length > 0) {
-                url += `&user_ids=${selectedUsers.join(',')}`;
+            
+            console.log('🚀 Trying fast endpoint...');
+            
+            // Добавляем таймаут для быстрого эндпоинта
+            const fastResponse = await fetchWithTimeout(url, {
+                headers: getAuthHeaders(),
+                timeout: 10000 // 10 секунд
+            });
+            
+            if (fastResponse.ok) {
+                const data = await fastResponse.json();
+                
+                if (data.success) {
+                    displayResults(data);
+                    showNotification('✅ Данные загружены из кэша', 'success');
+                    hideLoading();
+                    return;
+                }
             }
-            if (activityType !== 'all') {
-                url += `&activity_type=${activityType}`;
-            }
+            
+            // Если быстрый эндпоинт не сработал, пробуем детальный
+            console.log('🔄 Fast endpoint failed, trying detailed...');
+            fallbackToDetailed = true;
         }
         
-        const response = await fetch(url, {
-            headers: getAuthHeaders()
+        // Используем детальный эндпоинт (fallback или основной)
+        url = `/api/stats/detailed?start_date=${startDate}&end_date=${endDate}&include_statistics=true&use_cache=false`;
+        if (selectedUsers.length > 0) {
+            url += `&user_ids=${selectedUsers.join(',')}`;
+        }
+        if (activityType !== 'all') {
+            url += `&activity_type=${activityType}`;
+        }
+        
+        console.log('📡 Using detailed endpoint:', url);
+        
+        const response = await fetchWithTimeout(url, {
+            headers: getAuthHeaders(),
+            timeout: 30000 // 30 секунд для детального
         });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
         
         const data = await response.json();
         
         if (data.success) {
             displayResults(data);
             
-            if (data.cache_used) {
-                showNotification('✅ Данные загружены из кэша', 'success');
+            if (fallbackToDetailed) {
+                showNotification('🔄 Используем live-данные (кэш недоступен)', 'info');
             } else {
-                showNotification('🔄 Данные загружены из Bitrix', 'info');
+                showNotification('📊 Данные загружены из Bitrix', 'info');
             }
         } else {
-            throw new Error(data.error || 'Unknown error');
+            throw new Error(data.error || 'Unknown error from server');
         }
+        
     } catch (error) {
-        console.error('Error:', error);
-        showNotification('❌ Ошибка загрузки данных: ' + error.message, 'error');
+        console.error('❌ Error loading data:', error);
+        
+        if (error.name === 'TimeoutError') {
+            showNotification('⏰ Превышено время ожидания сервера', 'error');
+        } else if (error.message.includes('504')) {
+            showNotification('🌐 Сервер не отвежает (Gateway Timeout)', 'error');
+        } else if (error.message.includes('JSON')) {
+            showNotification('📄 Ошибка формата данных от сервера', 'error');
+        } else {
+            showNotification('❌ Ошибка загрузки: ' + error.message, 'error');
+        }
+        
+        // Показываем пустую таблицу с ошибкой
+        const tbody = document.getElementById('resultsBody');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" style="text-align:center;padding:40px;color:#f56565">
+                        ❌ Ошибка загрузки данных<br>
+                        <small>${error.message}</small><br>
+                        <button onclick="applyFilters(false)" style="margin-top:15px">🔄 Попробовать снова</button>
+                    </td>
+                </tr>
+            `;
+        }
     } finally {
         hideLoading();
     }
+}
+
+// 🔧 Добавляем функцию fetch с таймаутом
+function fetchWithTimeout(url, options = {}) {
+    const { timeout = 30000, ...fetchOptions } = options;
+    
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error(`TimeoutError: Request took longer than ${timeout}ms`));
+        }, timeout);
+
+        fetch(url, fetchOptions)
+            .then(response => {
+                clearTimeout(timer);
+                resolve(response);
+            })
+            .catch(err => {
+                clearTimeout(timer);
+                reject(err);
+            });
+    });
 }
 
 async function refreshData() {
