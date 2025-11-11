@@ -649,9 +649,9 @@ async def get_fast_stats(
 
         # 🔥 ТОЛЬКО ДАННЫЕ ИЗ КЭША - НИКАКИХ ЗАПРОСОВ К BITRIX
         cache_analysis = await warehouse_service.get_cached_activities_optimized(
-            target_user_ids, start_date, end_date
+            target_user_ids, start_date, end_date, activity_types
         )
-        
+
         cached_activities = cache_analysis["activities"]
         completeness = cache_analysis["completeness"]
 
@@ -713,12 +713,8 @@ async def get_fast_stats(
             }
 
             if include_statistics:
-                # Простая статистика из активностей (без запроса к Bitrix)
-                statistics = await bitrix_service.get_activity_statistics(
-                    start_date=start_date,
-                    end_date=end_date,
-                    user_ids=target_user_ids
-                )
+                # 🔥 ИСПРАВЛЕНИЕ: статистика из активностей БЕЗ запроса к Bitrix
+                statistics = await bitrix_service.get_activity_statistics_from_data(activities)
                 result["statistics"] = statistics
 
             return result

@@ -390,6 +390,50 @@ class BitrixService:
                 'end': sorted_daily[-1]['date'] if sorted_daily else ''
             }
         }
+    
+    async def get_activity_statistics_from_data(self, activities: List[Dict]) -> Dict[str, Any]:
+        """Получение статистики из готового списка активностей (без запросов к Bitrix)"""
+        if not activities:
+            return {}
+
+        daily_stats = {}
+        hourly_stats = {str(i).zfill(2): 0 for i in range(24)}
+        type_stats = {}
+        weekday_stats = {
+            'Monday': 0, 'Tuesday': 0, 'Wednesday': 0, 'Thursday': 0,
+            'Friday': 0, 'Saturday': 0, 'Sunday': 0
+        }
+
+        for activity in activities:
+            created_str = activity['CREATED'].replace('Z', '+00:00')
+            activity_date = datetime.fromisoformat(created_str)
+            date_key = activity_date.strftime('%Y-%m-%d')
+            hour_key = activity_date.strftime('%H')
+            weekday = activity_date.strftime('%A')
+            type_id = str(activity['TYPE_ID'])
+
+            if date_key not in daily_stats:
+                daily_stats[date_key] = {'date': date_key, 'day_of_week': weekday, 'total': 0, 'by_type': {}}
+
+            daily_stats[date_key]['total'] += 1
+            daily_stats[date_key]['by_type'][type_id] = daily_stats[date_key]['by_type'].get(type_id, 0) + 1
+            type_stats[type_id] = type_stats.get(type_id, 0) + 1
+            hourly_stats[hour_key] += 1
+            weekday_stats[weekday] += 1
+
+        sorted_daily = sorted(daily_stats.values(), key=lambda x: x['date'])
+
+        return {
+            'total_activities': len(activities),
+            'daily_stats': sorted_daily,
+            'hourly_stats': hourly_stats,
+            'type_stats': type_stats,
+            'weekday_stats': weekday_stats,
+            'date_range': {
+                'start': sorted_daily[0]['date'] if sorted_daily else '',
+                'end': sorted_daily[-1]['date'] if sorted_daily else ''
+            }
+        }
 
     def clear_cache(self):
         """Очищает кэш"""
