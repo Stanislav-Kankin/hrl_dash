@@ -9,7 +9,7 @@ const ACTIVITY_TYPES = {
 
 const DAY_NAMES = {
     'Monday': 'Пн',
-    'Tuesday': 'Вт', 
+    'Tuesday': 'Вт',
     'Wednesday': 'Ср',
     'Thursday': 'Чт',
     'Friday': 'Пт',
@@ -66,7 +66,7 @@ function showNotification(message, type = 'info') {
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         animation: slideIn 0.3s ease-out;
     `;
-    
+
     notification.textContent = message;
     container.appendChild(notification);
 
@@ -218,7 +218,7 @@ async function waitForCriticalElements() {
     const criticalElements = ['employeesCheckboxes', 'activityTypeSelect', 'startDate', 'endDate', 'resultsBody'];
     const startTime = Date.now();
     const maxWaitTime = 10000;
-    
+
     while (Date.now() - startTime < maxWaitTime) {
         const allLoaded = criticalElements.every(id => {
             const element = document.getElementById(id);
@@ -250,40 +250,40 @@ function showLoginPrompt() {
 // ========== ФИЛЬТРЫ И ДАННЫЕ ==========
 async function applyFilters(useFastStats = true) {
     showLoading('Загрузка данных...');
-    
+
     const selectedUsers = getSelectedUsers();
     const startDate = document.getElementById('startDate').value;
     const endDate = document.getElementById('endDate').value;
     const activityType = document.getElementById('activityTypeSelect').value;
-    
+
     if (!startDate || !endDate) {
         alert('Пожалуйста, выберите диапазон дат');
         hideLoading();
         return;
     }
-    
+
     try {
         let url;
         let fallbackToDetailed = false;
-        
+
         if (useFastStats) {
             // Пытаемся использовать быстрый эндпоинт с таймаутом
             url = `/api/stats/fast?start_date=${startDate}&end_date=${endDate}`;
             if (selectedUsers.length > 0) {
                 url += `&user_ids=${selectedUsers.join(',')}`;
             }
-            
+
             console.log('🚀 Trying fast endpoint...');
-            
+
             // Добавляем таймаут для быстрого эндпоинта
             const fastResponse = await fetchWithTimeout(url, {
                 headers: getAuthHeaders(),
                 timeout: 10000 // 10 секунд
             });
-            
+
             if (fastResponse.ok) {
                 const data = await fastResponse.json();
-                
+
                 if (data.success) {
                     displayResults(data);
                     showNotification('✅ Данные загружены из кэша', 'success');
@@ -291,37 +291,37 @@ async function applyFilters(useFastStats = true) {
                     return;
                 }
             }
-            
+
             // Если быстрый эндпоинт не сработал, пробуем детальный
             console.log('🔄 Fast endpoint failed, trying detailed...');
             fallbackToDetailed = true;
         }
-        
+
         // Используем детальный эндпоинт (fallback или основной)
-        url = `/api/stats/detailed?start_date=${startDate}&end_date=${endDate}&include_statistics=true&use_cache=false`;
+        url = `/api/stats/detailed?start_date=${startDate}&end_date=${endDate}&include_statistics=true&use_cache=true`;
         if (selectedUsers.length > 0) {
             url += `&user_ids=${selectedUsers.join(',')}`;
         }
         if (activityType !== 'all') {
             url += `&activity_type=${activityType}`;
         }
-        
+
         console.log('📡 Using detailed endpoint:', url);
-        
+
         const response = await fetchWithTimeout(url, {
             headers: getAuthHeaders(),
             timeout: 30000 // 30 секунд для детального
         });
-        
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const data = await response.json();
-        
+
         if (data.success) {
             displayResults(data);
-            
+
             if (fallbackToDetailed) {
                 showNotification('🔄 Используем live-данные (кэш недоступен)', 'info');
             } else {
@@ -330,10 +330,10 @@ async function applyFilters(useFastStats = true) {
         } else {
             throw new Error(data.error || 'Unknown error from server');
         }
-        
+
     } catch (error) {
         console.error('❌ Error loading data:', error);
-        
+
         if (error.name === 'TimeoutError') {
             showNotification('⏰ Превышено время ожидания сервера', 'error');
         } else if (error.message.includes('504')) {
@@ -343,7 +343,7 @@ async function applyFilters(useFastStats = true) {
         } else {
             showNotification('❌ Ошибка загрузки: ' + error.message, 'error');
         }
-        
+
         // Показываем пустую таблицу с ошибкой
         const tbody = document.getElementById('resultsBody');
         if (tbody) {
@@ -365,7 +365,7 @@ async function applyFilters(useFastStats = true) {
 // 🔧 Добавляем функцию fetch с таймаутом
 function fetchWithTimeout(url, options = {}) {
     const { timeout = 30000, ...fetchOptions } = options;
-    
+
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
             reject(new Error(`TimeoutError: Request took longer than ${timeout}ms`));
@@ -385,29 +385,29 @@ function fetchWithTimeout(url, options = {}) {
 
 async function refreshData() {
     showLoading('Обновление данных из Bitrix...');
-    
+
     const selectedUsers = getSelectedUsers();
     const startDate = document.getElementById('startDate').value;
     const endDate = document.getElementById('endDate').value;
-    
+
     if (!startDate || !endDate) {
         alert('Пожалуйста, выберите диапазон дат');
         hideLoading();
         return;
     }
-    
+
     try {
         let url = `/api/refresh-cache?start_date=${startDate}&end_date=${endDate}`;
         if (selectedUsers.length > 0) {
             url += `&user_ids=${selectedUsers.join(',')}`;
         }
-        
+
         const response = await fetch(url, {
             headers: getAuthHeaders()
         });
-        
+
         const data = await response.json();
-        
+
         if (data.success) {
             showNotification(`✅ Кэш обновлен: ${data.activities_count} активностей`, 'success');
             await applyFilters(true);
@@ -556,7 +556,7 @@ function getDefaultUsers() {
 function renderUserCheckboxes() {
     const container = document.getElementById('employeesCheckboxes');
     if (!container) return;
-    
+
     container.innerHTML = '';
     allUsers.forEach(user => {
         const div = document.createElement('div');
@@ -576,10 +576,10 @@ async function showUserDetails(userId) {
         alert('Данные не найдены');
         return;
     }
-    
+
     const panel = document.getElementById('detailsPanel');
     if (!panel) return;
-    
+
     panel.classList.add('active');
     panel.innerHTML = `
         <div class="details-header">
@@ -588,11 +588,11 @@ async function showUserDetails(userId) {
         </div>
         <div class="details-content"><div class="loading">Загрузка...</div></div>
     `;
-    
+
     const closeOnEsc = (e) => { if (e.key === 'Escape') closeDetailsPanel(); };
     document.addEventListener('keydown', closeOnEsc);
     panel._escHandler = closeOnEsc;
-    
+
     try {
         const startDate = getElementValueSafely('startDate');
         const endDate = getElementValueSafely('endDate');
@@ -600,13 +600,13 @@ async function showUserDetails(userId) {
             `/api/user-activities/${encodeURIComponent(userId)}?start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`
         );
         const data = await response.json();
-        
+
         if (!data.success) throw new Error(data.error || 'Ошибка API');
-        
+
         const activities = data.activities || [];
         const activitiesByDay = groupActivitiesByDay(activities);
         const contentHtml = buildActivitiesHtml(activitiesByDay, data);
-        
+
         const contentDiv = panel.querySelector('.details-content');
         if (contentDiv) contentDiv.innerHTML = contentHtml;
     } catch (error) {
@@ -620,20 +620,20 @@ async function showUserDetails(userId) {
 
 function groupActivitiesByDay(activities) {
     const activitiesByDay = {};
-    
+
     activities.forEach(activity => {
         try {
             const activityDate = new Date(activity.CREATED.replace('Z', '+00:00'));
             const dateKey = activityDate.toISOString().split('T')[0];
-            
+
             if (!activitiesByDay[dateKey]) activitiesByDay[dateKey] = [];
-            
+
             let description = activity.DESCRIPTION || activity.SUBJECT || 'Без описания';
             description = description.replace(/<br\s*\/?>/gi, '\n')
-                                   .replace(/<[^>]*>/g, '')
-                                   .trim()
-                                   .replace(/\s+/g, ' ');
-            
+                .replace(/<[^>]*>/g, '')
+                .trim()
+                .replace(/\s+/g, ' ');
+
             activitiesByDay[dateKey].push({
                 time: activityDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
                 type: ACTIVITY_TYPES[activity.TYPE_ID]?.name || 'Другое',
@@ -644,21 +644,21 @@ function groupActivitiesByDay(activities) {
             console.error('Error processing activity:', e);
         }
     });
-    
+
     return activitiesByDay;
 }
 
 function buildActivitiesHtml(activitiesByDay, data) {
     const sortedDays = Object.keys(activitiesByDay).sort().reverse();
-    
+
     if (sortedDays.length === 0) {
         return '<div class="loading">Нет активностей за выбранный период</div>';
     }
-    
+
     let contentHtml = `<div style="margin-bottom:15px;padding:12px;background:#e7f3ff;border-radius:6px">
         Всего: ${data.activities_count} | Показано: ${data.activities_returned || data.activities?.length || 0}
     </div>`;
-    
+
     sortedDays.forEach(day => {
         const acts = activitiesByDay[day];
         const date = new Date(day);
@@ -668,10 +668,10 @@ function buildActivitiesHtml(activitiesByDay, data) {
             month: 'long',
             day: 'numeric'
         });
-        
+
         contentHtml += `<div class="day-group">
             <div class="day-header">📅 ${dayName} (${acts.length})</div>`;
-        
+
         acts.forEach(act => {
             const safeDesc = escapeHtml(act.description);
             contentHtml += `
@@ -683,10 +683,10 @@ function buildActivitiesHtml(activitiesByDay, data) {
                     <div class="activity-description">${safeDesc}</div>
                 </div>`;
         });
-        
+
         contentHtml += `</div>`;
     });
-    
+
     return contentHtml;
 }
 
@@ -833,15 +833,15 @@ function hideAuthModal() {
 
 async function login(e) {
     if (e) e.preventDefault();
-    
+
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
-    
+
     if (!email || !password) {
         alert('❌ Пожалуйста, заполните все поля');
         return false;
     }
-    
+
     try {
         const data = await BitrixAPI.login(email, password);
         if (data.access_token) {
@@ -858,16 +858,16 @@ async function login(e) {
 
 async function register(e) {
     if (e) e.preventDefault();
-    
+
     const email = document.getElementById('registerEmail').value;
     const password = document.getElementById('registerPassword').value;
     const full_name = document.getElementById('registerName').value;
-    
+
     if (!email || !password) {
         alert('❌ Пожалуйста, заполните email и пароль');
         return false;
     }
-    
+
     try {
         const data = await BitrixAPI.register(email, password, full_name);
         if (data.email) {
@@ -931,7 +931,7 @@ window.testConnection = async () => {
     alert(d.connected ? '✅ OK' : '❌ Ошибка');
 };
 
-window.showVersion = function() {
+window.showVersion = function () {
     alert(`Версия системы: ${buildDate}`);
 };
 

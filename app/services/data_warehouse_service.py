@@ -148,118 +148,6 @@ class DataWarehouseService:
         except Exception as e:
             logger.error(f"Error saving daily snapshot: {e}")
     
-    async def get_cached_stats(self, user_ids: List[str], start_date: str, end_date: str) -> Optional[Dict]:
-        """Получает статистику из кэша"""
-        try:
-            # Пока просто возвращаем None чтобы использовать live данные
-            # В будущем здесь будет логика агрегации из кэша
-            return None
-        except Exception as e:
-            logger.error(f"Error getting cached stats: {e}")
-            return None
-
-    async def start_background_sync(self):
-        """Запуск фоновой синхронизации"""
-        if self.is_syncing:
-            return
-            
-        self.is_syncing = True
-        asyncio.create_task(self._sync_worker())
-    
-    async def _sync_worker(self):
-        """Фоновый воркер для синхронизации данных"""
-        while True:
-            try:
-                await self.sync_recent_data()
-                await asyncio.sleep(300)  # Синхронизация каждые 5 минут
-            except Exception as e:
-                logger.error(f"Sync worker error: {e}")
-                await asyncio.sleep(60)
-    
-    async def sync_recent_data(self):
-        """Синхронизация данных за последние 30 дней"""
-        try:
-            end_date = datetime.now().strftime("%Y-%m-%d")
-            start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-            
-            users = await self.bitrix_service.get_presales_users()
-            if not users:
-                return
-                
-            user_ids = [str(user['ID']) for user in users]
-            
-            # Проверяем, нужно ли синхронизировать
-            need_sync = not await self.is_period_cached(user_ids, start_date, end_date)
-            
-            if need_sync:
-                logger.info("🔄 Background sync: fetching fresh data")
-                activities = await self.bitrix_service.get_activities(
-                    start_date=start_date, 
-                    end_date=end_date, 
-                    user_ids=user_ids
-                )
-                
-                if activities:
-                    await self.cache_activities(activities)
-                    
-                    # Создаем снапшоты для каждого дня
-                    start = datetime.fromisoformat(start_date)
-                    end = datetime.fromisoformat(end_date)
-                    current = start
-                    
-                    while current <= end:
-                        date_str = current.strftime("%Y-%m-%d")
-                        await self.save_daily_snapshot_from_activities(
-                            activities, user_ids, date_str
-                        )
-                        current += timedelta(days=1)
-                        
-                    logger.info(f"✅ Background sync completed: {len(activities)} activities")
-            else:
-                logger.info("✅ Background sync: cache is up to date")
-                
-        except Exception as e:
-            logger.error(f"Background sync error: {e}")
-
-    async def save_daily_snapshot_from_activities(self, activities: List[Dict], user_ids: List[str], date: str):
-        """Сохраняет ежедневный снапшот из списка активностей"""
-        if not activities:
-            return
-            
-        try:
-            # Группируем активности по пользователям
-            user_activities = {}
-            for act in activities:
-                user_id = str(act.get('AUTHOR_ID', ''))
-                if user_id in user_ids:
-                    if user_id not in user_activities:
-                        user_activities[user_id] = []
-                    user_activities[user_id].append(act)
-            
-            # Создаем статистику для каждого пользователя
-            user_stats = []
-            for user_id, acts in user_activities.items():
-                calls = len([a for a in acts if str(a.get('TYPE_ID')) == '2'])
-                comments = len([a for a in acts if str(a.get('TYPE_ID')) == '6'])
-                tasks = len([a for a in acts if str(a.get('TYPE_ID')) == '4'])
-                meetings = len([a for a in acts if str(a.get('TYPE_ID')) == '1'])
-                total = len(acts)
-                
-                user_stats.append({
-                    "user_id": user_id,
-                    "calls": calls,
-                    "comments": comments,
-                    "tasks": tasks,
-                    "meetings": meetings,
-                    "total": total
-                })
-            
-            # Сохраняем в БД
-            await self.save_daily_snapshot(user_stats, date)
-            
-        except Exception as e:
-            logger.error(f"Error saving snapshot from activities: {e}")
-
     async def get_fast_stats(self, user_ids: List[str], start_date: str, end_date: str) -> Optional[Dict]:
         """Быстрая статистика из кэша без запросов к Bitrix"""
         try:
@@ -341,3 +229,54 @@ class DataWarehouseService:
         except Exception as e:
             logger.error(f"Error checking cache completeness: {e}")
             return False
+
+    async def start_background_sync(self):
+        """Запуск фоновой синхронизации - ОТКЛЮЧЕНА"""
+        # 🔥 ОТКЛЮЧАЕМ АВТОМАТИЧЕСКУЮ СИНХРОНИЗАЦИЮ
+        # Данные будут кэшироваться только при явных запросах пользователя
+        logger.info("🔄 Background sync DISABLED - caching only on user requests")
+        return
+    
+    async def sync_recent_data(self):
+        """Фоновая синхронизация - ОТКЛЮЧЕНА"""
+        # 🔥 НЕ ГРУЗИМ ДАННЫЕ АВТОМАТИЧЕСКИ
+        return
+
+    async def save_daily_snapshot_from_activities(self, activities: List[Dict], user_ids: List[str], date: str):
+        """Сохраняет ежедневный снапшот из списка активностей"""
+        if not activities:
+            return
+            
+        try:
+            # Группируем активности по пользователям
+            user_activities = {}
+            for act in activities:
+                user_id = str(act.get('AUTHOR_ID', ''))
+                if user_id in user_ids:
+                    if user_id not in user_activities:
+                        user_activities[user_id] = []
+                    user_activities[user_id].append(act)
+            
+            # Создаем статистику для каждого пользователя
+            user_stats = []
+            for user_id, acts in user_activities.items():
+                calls = len([a for a in acts if str(a.get('TYPE_ID')) == '2'])
+                comments = len([a for a in acts if str(a.get('TYPE_ID')) == '6'])
+                tasks = len([a for a in acts if str(a.get('TYPE_ID')) == '4'])
+                meetings = len([a for a in acts if str(a.get('TYPE_ID')) == '1'])
+                total = len(acts)
+                
+                user_stats.append({
+                    "user_id": user_id,
+                    "calls": calls,
+                    "comments": comments,
+                    "tasks": tasks,
+                    "meetings": meetings,
+                    "total": total
+                })
+            
+            # Сохраняем в БД
+            await self.save_daily_snapshot(user_stats, date)
+            
+        except Exception as e:
+            logger.error(f"Error saving snapshot from activities: {e}")

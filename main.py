@@ -81,8 +81,9 @@ async def get_detailed_stats(
     user_ids: str = None,
     activity_type: str = None,
     include_statistics: bool = True,
-    use_cache: bool = True  # 🔥 ДОБАВИЛ ФЛАГ ДЛЯ КЭША
+    use_cache: bool = True
 ):
+    """Основной эндпоинт статистики с умным кэшированием"""
     try:
         user_ids_list = user_ids.split(',') if user_ids else []
         activity_types = [activity_type] if activity_type else None
@@ -93,11 +94,23 @@ async def get_detailed_stats(
         user_info_map = {str(u['ID']): u for u in presales_users}
         target_user_ids = user_ids_list if user_ids_list else list(user_info_map.keys())
 
-        # 🔥 ПРОВЕРЯЕМ КЭШ ПРЕЖДЕ ЧЕМ ДЕЛАТЬ ЗАПРОС К BITRIX
+        # 🔥 НОВАЯ ЛОГИКА: кэшируем ТОЛЬКО если период ≤ 7 дней
+        cache_period = False
+        if start_date and end_date:
+            try:
+                start = datetime.fromisoformat(start_date)
+                end = datetime.fromisoformat(end_date)
+                days_diff = (end - start).days
+                cache_period = days_diff <= 7  # Кэшируем только короткие периоды
+                logger.info(f"📅 Period: {days_diff} days, caching: {cache_period}")
+            except Exception as e:
+                logger.error(f"Error parsing dates: {e}")
+                cache_period = False
+
         activities = []
         cache_used = False
         
-        if use_cache:
+        if use_cache and cache_period:
             cached_activities = await warehouse_service.get_cached_activities(
                 target_user_ids, start_date, end_date
             )
@@ -106,7 +119,7 @@ async def get_detailed_stats(
                 cache_used = True
                 logger.info(f"✅ Using cached data: {len(activities)} activities from warehouse")
         
-        # Если кэша нет или он отключен, делаем запрос к Bitrix
+        # Если кэша нет или период длинный - делаем запрос к Bitrix
         if not activities:
             activities = await bitrix_service.get_activities(
                 start_date=start_date,
@@ -114,18 +127,20 @@ async def get_detailed_stats(
                 user_ids=target_user_ids,
                 activity_types=activity_types
             )
-            # 🔥 СОХРАНЯЕМ В КЭШ ДЛЯ СЛЕДУЮЩИХ ЗАПРОСОВ
-            if activities:
+            
+            # 🔥 КЭШИРУЕМ ТОЛЬКО КОРОТКИЕ ПЕРИОДЫ
+            if activities and cache_period:
                 asyncio.create_task(warehouse_service.cache_activities(activities))
-                logger.info(f"✅ Cached {len(activities)} activities for future requests")
+                logger.info(f"✅ Cached {len(activities)} activities for period {start_date} to {end_date}")
 
-        # 🔥 СОХРАНЯЕМ ЕЖЕДНЕВНЫЙ СНАПШОТ
-        today = datetime.now().strftime("%Y-%m-%d")
-        asyncio.create_task(warehouse_service.save_daily_snapshot_from_activities(
-            activities, target_user_ids, today
-        ))
+        # 🔥 СОХРАНЯЕМ СНАПШОТ ТОЛЬКО ДЛЯ КОРОТКИХ ПЕРИОДОВ
+        if cache_period and activities:
+            today = datetime.now().strftime("%Y-%m-%d")
+            asyncio.create_task(warehouse_service.save_daily_snapshot_from_activities(
+                activities, target_user_ids, today
+            ))
 
-        # --- Остальная логика подсчета статистики ---
+        # --- Логика подсчета статистики ---
         user_activities = {}
         if activities:
             for act in activities:
@@ -169,8 +184,10 @@ async def get_detailed_stats(
             "success": True, 
             "user_stats": user_stats, 
             "total_activities": total_activities,
-            "cache_used": cache_used,  # 🔥 ДОБАВИЛ ИНФОРМАЦИЮ О КЭШЕ
-            "activities_count": len(activities)
+            "cache_used": cache_used,
+            "activities_count": len(activities),
+            "start_date": start_date,
+            "end_date": end_date
         }
 
         if include_statistics:
@@ -359,6 +376,74 @@ async def get_fast_stats(
         
     except Exception as e:
         logger.error(f"❌ Error in fast stats: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/refresh-cache")
+async def refresh_cache(
+    start_date: str = None,
+    end_date: str = None,
+    user_ids: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Принудительное обновление кэша ТОЛЬКО для запрошенного периода"""
+    try:
+        user_ids_list = user_ids.split(',') if user_ids else []
+        presales_users = await bitrix_service.get_presales_users()
+        if not presales_users:
+            return {"success": False, "error": "Список сотрудников пуст"}
+
+        target_user_ids = user_ids_list if user_ids_list else [str(u['ID']) for u in presales_users]
+        
+        # 🔥 ЕСЛИ ДАТЫ НЕ УКАЗАНЫ - ИСПОЛЬЗУЕМ ТЕКУЩИЙ ДЕНЬ
+        if not start_date or not end_date:
+            today = datetime.now().strftime("%Y-%m-%d")
+            start_date = today
+            end_date = today
+        
+        # 🔥 ПРОВЕРЯЕМ ЧТО ПЕРИОД НЕ СЛИШКОМ БОЛЬШОЙ
+        start = datetime.fromisoformat(start_date)
+        end = datetime.fromisoformat(end_date)
+        days_diff = (end - start).days
+        
+        if days_diff > 30:
+            return {
+                "success": False, 
+                "error": f"Слишком большой период для кэширования: {days_diff} дней. Максимум 30 дней."
+            }
+
+        # Получаем свежие данные
+        activities = await bitrix_service.get_activities(
+            start_date=start_date,
+            end_date=end_date,
+            user_ids=target_user_ids
+        )
+        
+        # Очищаем старый кэш и сохраняем новый
+        if activities:
+            await warehouse_service.cache_activities(activities)
+            
+            # Создаем снапшоты для каждого дня периода
+            current = start
+            while current <= end:
+                date_str = current.strftime("%Y-%m-%d")
+                await warehouse_service.save_daily_snapshot_from_activities(
+                    activities, target_user_ids, date_str
+                )
+                current += timedelta(days=1)
+            
+            return {
+                "success": True, 
+                "message": f"Cache refreshed with {len(activities)} activities",
+                "period": f"{start_date} to {end_date}",
+                "days_count": days_diff + 1,
+                "users_count": len(target_user_ids),
+                "activities_count": len(activities)
+            }
+        else:
+            return {"success": False, "error": "No activities found"}
+            
+    except Exception as e:
+        logger.error(f"Error refreshing cache: {e}")
         return {"success": False, "error": str(e)}
 
 @app.get("/api/leads/current")

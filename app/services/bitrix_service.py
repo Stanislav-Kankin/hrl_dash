@@ -216,13 +216,14 @@ class BitrixService:
         end_date_str: str, 
         activity_types: List[str] = None
     ) -> List[Dict]:
-        """Улучшенная версия получения активностей для одного пользователя"""
+        """Улучшенная версия получения активностей для одного пользователя с лимитами"""
         user_activities = []
         start = 0
         request_count = 0
-        max_requests = 100  # 🔥 УВЕЛИЧИЛ ДО 100 (5000 активностей)
+        max_requests = 20  # 🔥 УМЕНЬШИЛ ДО 20 (1000 активностей максимум)
+        max_activities = 1000  # 🔥 МАКСИМУМ АКТИВНОСТЕЙ НА ПОЛЬЗОВАТЕЛЯ
 
-        while request_count < max_requests:
+        while request_count < max_requests and len(user_activities) < max_activities:
             params = {
                 'filter[>=CREATED]': start_date_str,
                 'filter[<=CREATED]': end_date_str,
@@ -250,6 +251,11 @@ class BitrixService:
             start += 50
             request_count += 1
             await asyncio.sleep(0.05)
+            
+            # 🔥 ПРЕРЫВАЕМ ЕСЛИ ДОСТИГЛИ ЛИМИТА
+            if len(user_activities) >= max_activities:
+                logger.warning(f"⚠️ User {user_id} reached activity limit: {max_activities}")
+                break
 
         return user_activities
 
