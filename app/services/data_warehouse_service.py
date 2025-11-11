@@ -46,13 +46,15 @@ class DataWarehouseService:
                     description TEXT,
                     subject TEXT,
                     raw_data TEXT,
-                    cached_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    cached_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    data_date TEXT NOT NULL  -- Дата данных (без времени)
                 )
             ''')
             
             # Индексы для быстрого поиска
             await db.execute('CREATE INDEX IF NOT EXISTS idx_activities_user_date ON activities_cache(user_id, created)')
             await db.execute('CREATE INDEX IF NOT EXISTS idx_snapshots_user_date ON activity_snapshots(user_id, date)')
+            await db.execute('CREATE INDEX IF NOT EXISTS idx_activities_data_date ON activities_cache(data_date)')
             
             await db.commit()
         logger.info("✅ Data warehouse initialized")
@@ -65,18 +67,27 @@ class DataWarehouseService:
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 for activity in activities:
+                    # Извлекаем дату из CREATED для data_date
+                    created_str = activity.get('CREATED', '')
+                    try:
+                        activity_date = datetime.fromisoformat(created_str.replace('Z', '+00:00'))
+                        data_date = activity_date.strftime("%Y-%m-%d")
+                    except:
+                        data_date = datetime.now().strftime("%Y-%m-%d")
+                    
                     await db.execute(
                         '''INSERT OR REPLACE INTO activities_cache 
-                           (id, user_id, created, type_id, description, subject, raw_data)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                           (id, user_id, created, type_id, description, subject, raw_data, data_date)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
                         (
                             activity.get('ID'),
                             activity.get('AUTHOR_ID'),
-                            activity.get('CREATED'),
+                            created_str,
                             activity.get('TYPE_ID'),
                             activity.get('DESCRIPTION', ''),
                             activity.get('SUBJECT', ''),
-                            json.dumps(activity)
+                            json.dumps(activity),
+                            data_date
                         )
                     )
                 await db.commit()
@@ -85,17 +96,45 @@ class DataWarehouseService:
             logger.error(f"Error caching activities: {e}")
     
     async def get_cached_activities(self, user_ids: List[str], start_date: str, end_date: str) -> List[Dict]:
-        """Получает активности из кэша с проверкой актуальности"""
+        """Получает активности из кэша с проверкой полноты данных за период"""
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 placeholders = ','.join('?' for _ in user_ids)
+                
+                # 🔥 ПРОВЕРЯЕМ ПОЛНОТУ ДАННЫХ ЗА ПЕРИОД
+                completeness_check = '''
+                    SELECT COUNT(DISTINCT data_date) as cached_days
+                    FROM activities_cache 
+                    WHERE user_id IN ({}) 
+                    AND data_date BETWEEN ? AND ?
+                '''.format(placeholders)
+                
+                params = user_ids + [start_date, end_date]
+                cursor = await db.execute(completeness_check, params)
+                result = await cursor.fetchone()
+                
+                if not result:
+                    return []
+                
+                cached_days = result[0]
+                
+                # Вычисляем общее количество дней в периоде
+                start = datetime.fromisoformat(start_date)
+                end = datetime.fromisoformat(end_date)
+                total_days = (end - start).days + 1
+                
+                # 🔥 Считаем кэш валидным если есть данные за ВСЕ дни периода
+                if cached_days < total_days:
+                    logger.info(f"🔄 Cache incomplete: {cached_days}/{total_days} days, will refresh")
+                    return []
+                
+                # 🔥 Если данные полные - получаем их (БЕЗ ПРОВЕРКИ ВРЕМЕНИ КЭШИРОВАНИЯ)
                 query = f'''
-                    SELECT raw_data, cached_at FROM activities_cache 
+                    SELECT raw_data FROM activities_cache 
                     WHERE user_id IN ({placeholders}) 
-                    AND created BETWEEN ? AND ?
+                    AND data_date BETWEEN ? AND ?
                     ORDER BY created DESC
                 '''
-                params = user_ids + [f"{start_date}T00:00:00", f"{end_date}T23:59:59"]
                 
                 cursor = await db.execute(query, params)
                 rows = await cursor.fetchall()
@@ -104,20 +143,12 @@ class DataWarehouseService:
                 for row in rows:
                     try:
                         activity_data = json.loads(row[0])
-                        cached_at = datetime.fromisoformat(row[1])
-                        
-                        # 🔥 ПРОВЕРЯЕМ АКТУАЛЬНОСТЬ КЭША (не старше 1 часа)
-                        if (datetime.now() - cached_at).total_seconds() < 3600:
-                            activities.append(activity_data)
-                        else:
-                            logger.info("🕒 Cache expired, will refresh")
-                            return []  # Кэш устарел, возвращаем пустой список
-                            
+                        activities.append(activity_data)
                     except Exception as e:
                         logger.error(f"Error parsing cached activity: {e}")
                         continue
                         
-                logger.info(f"📊 Got {len(activities)} activities from cache")
+                logger.info(f"📊 Got {len(activities)} activities from cache (complete period: {start_date} to {end_date})")
                 return activities
                 
         except Exception as e:
@@ -165,6 +196,16 @@ class DataWarehouseService:
                 rows = await cursor.fetchall()
                 
                 if not rows:
+                    return None
+                
+                # Проверяем полноту данных
+                unique_dates = set(row[1] for row in rows)
+                start = datetime.fromisoformat(start_date)
+                end = datetime.fromisoformat(end_date)
+                total_days = (end - start).days + 1
+                
+                if len(unique_dates) < total_days:
+                    logger.info(f"📊 Fast stats incomplete: {len(unique_dates)}/{total_days} days")
                     return None
                 
                 # Агрегируем данные по пользователям
@@ -223,8 +264,8 @@ class DataWarehouseService:
                 end = datetime.fromisoformat(end_date)
                 total_days = (end - start).days + 1
                 
-                # Считаем кэш полным если есть данные за 80% дней
-                return result[0] >= total_days * 0.8
+                # Считаем кэш полным если есть данные за ВСЕ дни
+                return result[0] >= total_days
                 
         except Exception as e:
             logger.error(f"Error checking cache completeness: {e}")
@@ -232,14 +273,11 @@ class DataWarehouseService:
 
     async def start_background_sync(self):
         """Запуск фоновой синхронизации - ОТКЛЮЧЕНА"""
-        # 🔥 ОТКЛЮЧАЕМ АВТОМАТИЧЕСКУЮ СИНХРОНИЗАЦИЮ
-        # Данные будут кэшироваться только при явных запросах пользователя
         logger.info("🔄 Background sync DISABLED - caching only on user requests")
         return
     
     async def sync_recent_data(self):
         """Фоновая синхронизация - ОТКЛЮЧЕНА"""
-        # 🔥 НЕ ГРУЗИМ ДАННЫЕ АВТОМАТИЧЕСКИ
         return
 
     async def save_daily_snapshot_from_activities(self, activities: List[Dict], user_ids: List[str], date: str):
@@ -280,3 +318,25 @@ class DataWarehouseService:
             
         except Exception as e:
             logger.error(f"Error saving snapshot from activities: {e}")
+
+    async def clear_old_cache(self, days_to_keep: int = 30):
+        """Очищает старый кэш"""
+        try:
+            cutoff_date = (datetime.now() - timedelta(days=days_to_keep)).strftime("%Y-%m-%d")
+            
+            async with aiosqlite.connect(self.db_path) as db:
+                # Удаляем старые записи из кэша активностей
+                await db.execute(
+                    "DELETE FROM activities_cache WHERE data_date < ?",
+                    (cutoff_date,)
+                )
+                # Удаляем старые снапшоты
+                await db.execute(
+                    "DELETE FROM activity_snapshots WHERE date < ?",
+                    (cutoff_date,)
+                )
+                await db.commit()
+                
+                logger.info(f"🧹 Cleared cache older than {cutoff_date}")
+        except Exception as e:
+            logger.error(f"Error clearing old cache: {e}")

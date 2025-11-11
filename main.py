@@ -81,7 +81,7 @@ async def get_main_stats(
     include_statistics: bool = True,
     current_user: dict = Depends(get_current_user)
 ):
-    """УНИВЕРСАЛЬНЫЙ эндпоинт - автоматически использует кэш если есть"""
+    """УНИВЕРСАЛЬНЫЙ эндпоинт - автоматически использует кэш если есть ПОЛНЫЕ данные"""
     try:
         user_ids_list = user_ids.split(',') if user_ids else []
         activity_types = [activity_type] if activity_type else None
@@ -94,11 +94,11 @@ async def get_main_stats(
 
         logger.info(f"🔍 Main stats: {start_date} to {end_date}, users: {len(target_user_ids)}")
 
-        # 🔥 ОСНОВНАЯ ЛОГИКА: сначала проверяем кэш
+        # 🔥 ОСНОВНАЯ ЛОГИКА: сначала проверяем кэш на ПОЛНОТУ ДАННЫХ
         cache_used = False
         activities = []
-        
-        # Проверяем кэш
+
+        # Проверяем кэш на полноту данных за период
         try:
             cached_activities = await warehouse_service.get_cached_activities(
                 target_user_ids, start_date, end_date
@@ -106,13 +106,13 @@ async def get_main_stats(
             if cached_activities:
                 activities = cached_activities
                 cache_used = True
-                logger.info(f"✅ Using cached data: {len(activities)} activities")
+                logger.info(f"✅ Using COMPLETE cached data: {len(activities)} activities for period {start_date} to {end_date}")
         except Exception as e:
             logger.error(f"❌ Cache check error: {e}")
 
-        # Если кэша нет - грузим из Bitrix
+        # Если кэша нет или данные неполные - грузим из Bitrix
         if not activities:
-            logger.info("🔄 No cache found, loading from Bitrix...")
+            logger.info(f"🔄 No complete cache found for period {start_date} to {end_date}, loading from Bitrix...")
             activities = await bitrix_service.get_activities(
                 start_date=start_date,
                 end_date=end_date,
@@ -123,7 +123,7 @@ async def get_main_stats(
             # 🔥 СОХРАНЯЕМ В КЭШ ДЛЯ СЛЕДУЮЩИХ ЗАПРОСОВ
             if activities:
                 asyncio.create_task(warehouse_service.cache_activities(activities))
-                logger.info(f"✅ Cached {len(activities)} activities for future requests")
+                logger.info(f"✅ Cached {len(activities)} activities for period {start_date} to {end_date}")
 
         # 🔥 СОХРАНЯЕМ СНАПШОТЫ ДЛЯ КАЖДОГО ДНЯ В ПЕРИОДЕ
         if activities:
@@ -404,6 +404,127 @@ async def refresh_cache(
             
     except Exception as e:
         logger.error(f"Error refreshing cache: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/refresh-period-cache")
+async def refresh_period_cache(
+    start_date: str,
+    end_date: str,
+    user_ids: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Принудительное обновление кэша за период"""
+    try:
+        user_ids_list = user_ids.split(',') if user_ids else []
+        presales_users = await bitrix_service.get_presales_users()
+        if not presales_users:
+            return {"success": False, "error": "Список сотрудников пуст"}
+
+        target_user_ids = user_ids_list if user_ids_list else [str(u['ID']) for u in presales_users]
+
+        # Получаем свежие данные
+        activities = await bitrix_service.get_activities(
+            start_date=start_date,
+            end_date=end_date,
+            user_ids=target_user_ids
+        )
+        
+        # Сохраняем в кэш
+        if activities:
+            await warehouse_service.cache_activities(activities)
+            
+            # Создаем снапшоты для каждого дня периода
+            start = datetime.fromisoformat(start_date)
+            end = datetime.fromisoformat(end_date)
+            current = start
+            
+            snapshots_created = 0
+            while current <= end:
+                date_str = current.strftime("%Y-%m-%d")
+                
+                # Фильтруем активности за текущий день
+                daily_activities = []
+                for activity in activities:
+                    try:
+                        created_str = activity.get('CREATED', '').replace('Z', '+00:00')
+                        activity_date = datetime.fromisoformat(created_str).strftime('%Y-%m-%d')
+                        if activity_date == date_str:
+                            daily_activities.append(activity)
+                    except Exception:
+                        continue
+                
+                # Создаем снапшот только если есть активности за этот день
+                if daily_activities:
+                    await warehouse_service.save_daily_snapshot_from_activities(
+                        daily_activities, target_user_ids, date_str
+                    )
+                    snapshots_created += 1
+                
+                current += timedelta(days=1)
+            
+            return {
+                "success": True, 
+                "message": f"Cache refreshed with {len(activities)} activities",
+                "period": f"{start_date} to {end_date}",
+                "snapshots_created": snapshots_created,
+                "activities_count": len(activities)
+            }
+        else:
+            return {"success": False, "error": "No activities found"}
+            
+    except Exception as e:
+        logger.error(f"Error refreshing period cache: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/cache-status")
+async def get_cache_status(
+    start_date: str,
+    end_date: str,
+    user_ids: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Проверяет состояние кэша для периода"""
+    try:
+        user_ids_list = user_ids.split(',') if user_ids else []
+        presales_users = await bitrix_service.get_presales_users()
+        if not presales_users:
+            return {"success": False, "error": "Список сотрудников пуст"}
+
+        target_user_ids = user_ids_list if user_ids_list else [str(u['ID']) for u in presales_users]
+
+        # Проверяем полноту кэша
+        is_cached = await warehouse_service.is_period_cached(target_user_ids, start_date, end_date)
+        
+        # Получаем информацию о днях в кэше
+        async with aiosqlite.connect(warehouse_service.db_path) as db:
+            placeholders = ','.join('?' for _ in target_user_ids)
+            query = f'''
+                SELECT DISTINCT data_date 
+                FROM activities_cache 
+                WHERE user_id IN ({placeholders}) 
+                AND data_date BETWEEN ? AND ?
+                ORDER BY data_date
+            '''
+            params = target_user_ids + [start_date, end_date]
+            cursor = await db.execute(query, params)
+            cached_dates = [row[0] for row in await cursor.fetchall()]
+
+        start = datetime.fromisoformat(start_date)
+        end = datetime.fromisoformat(end_date)
+        total_days = (end - start).days + 1
+
+        return {
+            "success": True,
+            "period": f"{start_date} to {end_date}",
+            "total_days": total_days,
+            "cached_days": len(cached_dates),
+            "is_complete": is_cached,
+            "cached_dates": cached_dates,
+            "missing_days": total_days - len(cached_dates)
+        }
+            
+    except Exception as e:
+        logger.error(f"Error checking cache status: {e}")
         return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
