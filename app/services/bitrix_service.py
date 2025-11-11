@@ -17,12 +17,12 @@ class BitrixService:
         self._cache_ttl = 10 * 60
         self.executor = ThreadPoolExecutor(max_workers=5)
         self.max_activities_per_user = 100000  # 🔥 ОГРАНИЧЕНИЕ на количество активностей на пользователя
-        self.max_days_per_request = 30  # 🔥 Максимальный период в днях для одного запроса
+        self.max_days_per_request = 100  # 🔥 Максимальный период в днях для одного запроса
         
     async def ensure_session(self):
         """Создает сессию если её нет"""
         if self.session is None or self.session.closed:
-            timeout = aiohttp.ClientTimeout(total=120)  # 🔥 Увеличиваем таймаут до 2 минут
+            timeout = aiohttp.ClientTimeout(total=500)  # 🔥 Увеличиваем таймаут
             self.session = aiohttp.ClientSession(timeout=timeout)
 
     async def close_session(self):
