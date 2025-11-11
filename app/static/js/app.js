@@ -1,4 +1,4 @@
-// app.js - ОПТИМИЗИРОВАННАЯ ВЕРСИЯ
+// app.js - ОДНА КНОПКА "ЗАГРУЗИТЬ"
 
 const ACTIVITY_TYPES = {
     "1": { name: "Встреча", class: "badge-meeting" },
@@ -9,7 +9,7 @@ const ACTIVITY_TYPES = {
 
 const DAY_NAMES = {
     'Monday': 'Пн',
-    'Tuesday': 'Вт',
+    'Tuesday': 'Вт', 
     'Wednesday': 'Ср',
     'Thursday': 'Чт',
     'Friday': 'Пт',
@@ -66,7 +66,7 @@ function showNotification(message, type = 'info') {
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         animation: slideIn 0.3s ease-out;
     `;
-
+    
     notification.textContent = message;
     container.appendChild(notification);
 
@@ -204,7 +204,7 @@ async function initializeDashboard() {
         await loadUsersList();
 
         if (BitrixAPI.authToken && currentUser) {
-            await applyFilters();
+            await loadData();
         } else {
             showLoginPrompt();
         }
@@ -218,7 +218,7 @@ async function waitForCriticalElements() {
     const criticalElements = ['employeesCheckboxes', 'activityTypeSelect', 'startDate', 'endDate', 'resultsBody'];
     const startTime = Date.now();
     const maxWaitTime = 10000;
-
+    
     while (Date.now() - startTime < maxWaitTime) {
         const allLoaded = criticalElements.every(id => {
             const element = document.getElementById(id);
@@ -247,8 +247,8 @@ function showLoginPrompt() {
     }
 }
 
-// ========== ФИЛЬТРЫ И ДАННЫЕ ==========
-async function applyFilters(useFastStats = true) {
+// ========== ОСНОВНАЯ ФУНКЦИЯ ЗАГРУЗКИ ==========
+async function loadData() {
     showLoading('Загрузка данных...');
     
     const selectedUsers = getSelectedUsers();
@@ -263,60 +263,24 @@ async function applyFilters(useFastStats = true) {
     }
     
     try {
-        let url;
-        let fallbackToDetailed = false;
-        
         // 🔥 РАСЧИТЫВАЕМ ДЛИТЕЛЬНОСТЬ ПЕРИОДА ДЛЯ ТАЙМАУТА
         const start = new Date(startDate);
         const end = new Date(endDate);
         const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
         
-        // 🔥 АДАПТИВНЫЕ ТАЙМАУТЫ В ЗАВИСИМОСТИ ОТ ПЕРИОДА
+        // 🔥 АДАПТИВНЫЕ ТАЙМАУТЫ
         const getTimeout = () => {
-            if (daysDiff <= 1) return 15000; // 15 сек для 1 дня
-            if (daysDiff <= 7) return 25000; // 25 сек для недели
-            if (daysDiff <= 14) return 40000; // 40 сек для 2 недель
-            return 60000; // 60 сек для больших периодов
+            if (daysDiff <= 1) return 30000; // 30 сек для 1 дня
+            if (daysDiff <= 7) return 45000; // 45 сек для недели
+            if (daysDiff <= 30) return 60000; // 60 сек для месяца
+            return 90000; // 90 сек для больших периодов
         };
         
         const timeoutMs = getTimeout();
         console.log(`⏰ Period: ${daysDiff} days, timeout: ${timeoutMs}ms`);
         
-        if (useFastStats) {
-            // Пытаемся использовать быстрый эндпоинт
-            url = `/api/stats/fast?start_date=${startDate}&end_date=${endDate}`;
-            if (selectedUsers.length > 0) {
-                url += `&user_ids=${selectedUsers.join(',')}`;
-            }
-            
-            console.log('🚀 Trying fast endpoint...');
-            
-            // 🔥 УВЕЛИЧИВАЕМ ТАЙМАУТ ДЛЯ БЫСТРОГО ЭНДПОИНТА
-            const fastResponse = await fetchWithTimeout(url, {
-                headers: getAuthHeaders(),
-                timeout: timeoutMs
-            });
-            
-            if (fastResponse.ok) {
-                const data = await fastResponse.json();
-                
-                if (data.success) {
-                    displayResults(data);
-                    showNotification('✅ Данные загружены из кэша', 'success');
-                    hideLoading();
-                    return;
-                } else {
-                    console.log('🔄 Fast endpoint returned error, falling back to detailed');
-                    fallbackToDetailed = true;
-                }
-            } else {
-                console.log('🔄 Fast endpoint failed, falling back to detailed');
-                fallbackToDetailed = true;
-            }
-        }
-        
-        // Используем детальный эндпоинт (fallback или основной)
-        url = `/api/stats/detailed?start_date=${startDate}&end_date=${endDate}&include_statistics=true&use_cache=true`;
+        // 🔥 ИСПОЛЬЗУЕМ УНИВЕРСАЛЬНЫЙ ЭНДПОИНТ
+        let url = `/api/stats/main?start_date=${startDate}&end_date=${endDate}&include_statistics=true`;
         if (selectedUsers.length > 0) {
             url += `&user_ids=${selectedUsers.join(',')}`;
         }
@@ -324,7 +288,7 @@ async function applyFilters(useFastStats = true) {
             url += `&activity_type=${activityType}`;
         }
         
-        console.log('📡 Using detailed endpoint with timeout:', timeoutMs, 'ms');
+        console.log('🚀 Loading data from main endpoint:', url);
         
         const response = await fetchWithTimeout(url, {
             headers: getAuthHeaders(),
@@ -340,9 +304,7 @@ async function applyFilters(useFastStats = true) {
         if (data.success) {
             displayResults(data);
             
-            if (fallbackToDetailed) {
-                showNotification('🔄 Используем live-данные', 'info');
-            } else if (data.cache_used) {
+            if (data.cache_used) {
                 showNotification('✅ Данные загружены из кэша', 'success');
             } else {
                 showNotification('📊 Данные загружены из Bitrix', 'info');
@@ -372,7 +334,7 @@ async function applyFilters(useFastStats = true) {
                     <td colspan="8" style="text-align:center;padding:40px;color:#f56565">
                         ❌ Ошибка загрузки данных<br>
                         <small>${error.message}</small><br>
-                        <button onclick="applyFilters(false)" style="margin-top:15px">🔄 Попробовать снова</button>
+                        <button onclick="loadData()" style="margin-top:15px">🔄 Попробовать снова</button>
                     </td>
                 </tr>
             `;
@@ -382,7 +344,7 @@ async function applyFilters(useFastStats = true) {
     }
 }
 
-// 🔧 Улучшенная функция fetch с таймаутом
+// 🔧 Функция fetch с таймаутом
 function fetchWithTimeout(url, options = {}) {
     const { timeout = 30000, ...fetchOptions } = options;
     
@@ -401,45 +363,6 @@ function fetchWithTimeout(url, options = {}) {
                 reject(err);
             });
     });
-}
-
-async function refreshData() {
-    showLoading('Обновление данных из Bitrix...');
-
-    const selectedUsers = getSelectedUsers();
-    const startDate = document.getElementById('startDate').value;
-    const endDate = document.getElementById('endDate').value;
-
-    if (!startDate || !endDate) {
-        alert('Пожалуйста, выберите диапазон дат');
-        hideLoading();
-        return;
-    }
-
-    try {
-        let url = `/api/refresh-cache?start_date=${startDate}&end_date=${endDate}`;
-        if (selectedUsers.length > 0) {
-            url += `&user_ids=${selectedUsers.join(',')}`;
-        }
-
-        const response = await fetch(url, {
-            headers: getAuthHeaders()
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            showNotification(`✅ Кэш обновлен: ${data.activities_count} активностей`, 'success');
-            await applyFilters(true);
-        } else {
-            throw new Error(data.error || 'Unknown error');
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        showNotification('❌ Ошибка обновления: ' + error.message, 'error');
-    } finally {
-        hideLoading();
-    }
 }
 
 function displayResults(data) {
@@ -576,7 +499,7 @@ function getDefaultUsers() {
 function renderUserCheckboxes() {
     const container = document.getElementById('employeesCheckboxes');
     if (!container) return;
-
+    
     container.innerHTML = '';
     allUsers.forEach(user => {
         const div = document.createElement('div');
@@ -596,10 +519,10 @@ async function showUserDetails(userId) {
         alert('Данные не найдены');
         return;
     }
-
+    
     const panel = document.getElementById('detailsPanel');
     if (!panel) return;
-
+    
     panel.classList.add('active');
     panel.innerHTML = `
         <div class="details-header">
@@ -608,11 +531,11 @@ async function showUserDetails(userId) {
         </div>
         <div class="details-content"><div class="loading">Загрузка...</div></div>
     `;
-
+    
     const closeOnEsc = (e) => { if (e.key === 'Escape') closeDetailsPanel(); };
     document.addEventListener('keydown', closeOnEsc);
     panel._escHandler = closeOnEsc;
-
+    
     try {
         const startDate = getElementValueSafely('startDate');
         const endDate = getElementValueSafely('endDate');
@@ -620,13 +543,13 @@ async function showUserDetails(userId) {
             `/api/user-activities/${encodeURIComponent(userId)}?start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`
         );
         const data = await response.json();
-
+        
         if (!data.success) throw new Error(data.error || 'Ошибка API');
-
+        
         const activities = data.activities || [];
         const activitiesByDay = groupActivitiesByDay(activities);
         const contentHtml = buildActivitiesHtml(activitiesByDay, data);
-
+        
         const contentDiv = panel.querySelector('.details-content');
         if (contentDiv) contentDiv.innerHTML = contentHtml;
     } catch (error) {
@@ -640,20 +563,20 @@ async function showUserDetails(userId) {
 
 function groupActivitiesByDay(activities) {
     const activitiesByDay = {};
-
+    
     activities.forEach(activity => {
         try {
             const activityDate = new Date(activity.CREATED.replace('Z', '+00:00'));
             const dateKey = activityDate.toISOString().split('T')[0];
-
+            
             if (!activitiesByDay[dateKey]) activitiesByDay[dateKey] = [];
-
+            
             let description = activity.DESCRIPTION || activity.SUBJECT || 'Без описания';
             description = description.replace(/<br\s*\/?>/gi, '\n')
-                .replace(/<[^>]*>/g, '')
-                .trim()
-                .replace(/\s+/g, ' ');
-
+                                   .replace(/<[^>]*>/g, '')
+                                   .trim()
+                                   .replace(/\s+/g, ' ');
+            
             activitiesByDay[dateKey].push({
                 time: activityDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
                 type: ACTIVITY_TYPES[activity.TYPE_ID]?.name || 'Другое',
@@ -664,21 +587,21 @@ function groupActivitiesByDay(activities) {
             console.error('Error processing activity:', e);
         }
     });
-
+    
     return activitiesByDay;
 }
 
 function buildActivitiesHtml(activitiesByDay, data) {
     const sortedDays = Object.keys(activitiesByDay).sort().reverse();
-
+    
     if (sortedDays.length === 0) {
         return '<div class="loading">Нет активностей за выбранный период</div>';
     }
-
+    
     let contentHtml = `<div style="margin-bottom:15px;padding:12px;background:#e7f3ff;border-radius:6px">
         Всего: ${data.activities_count} | Показано: ${data.activities_returned || data.activities?.length || 0}
     </div>`;
-
+    
     sortedDays.forEach(day => {
         const acts = activitiesByDay[day];
         const date = new Date(day);
@@ -688,10 +611,10 @@ function buildActivitiesHtml(activitiesByDay, data) {
             month: 'long',
             day: 'numeric'
         });
-
+        
         contentHtml += `<div class="day-group">
             <div class="day-header">📅 ${dayName} (${acts.length})</div>`;
-
+        
         acts.forEach(act => {
             const safeDesc = escapeHtml(act.description);
             contentHtml += `
@@ -703,10 +626,10 @@ function buildActivitiesHtml(activitiesByDay, data) {
                     <div class="activity-description">${safeDesc}</div>
                 </div>`;
         });
-
+        
         contentHtml += `</div>`;
     });
-
+    
     return contentHtml;
 }
 
@@ -853,15 +776,15 @@ function hideAuthModal() {
 
 async function login(e) {
     if (e) e.preventDefault();
-
+    
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
-
+    
     if (!email || !password) {
         alert('❌ Пожалуйста, заполните все поля');
         return false;
     }
-
+    
     try {
         const data = await BitrixAPI.login(email, password);
         if (data.access_token) {
@@ -878,16 +801,16 @@ async function login(e) {
 
 async function register(e) {
     if (e) e.preventDefault();
-
+    
     const email = document.getElementById('registerEmail').value;
     const password = document.getElementById('registerPassword').value;
     const full_name = document.getElementById('registerName').value;
-
+    
     if (!email || !password) {
         alert('❌ Пожалуйста, заполните email и пароль');
         return false;
     }
-
+    
     try {
         const data = await BitrixAPI.register(email, password, full_name);
         if (data.email) {
@@ -923,8 +846,7 @@ function showRegister() {
 }
 
 // ========== ГЛОБАЛЬНЫЕ ФУНКЦИИ ==========
-window.applyFilters = applyFilters;
-window.refreshData = refreshData;
+window.loadData = loadData;
 window.showUserDetails = showUserDetails;
 window.closeDetailsPanel = closeDetailsPanel;
 window.showAdminPanel = showAdminPanel;
@@ -942,7 +864,7 @@ window.clearCache = async () => {
     if (BitrixAPI.authToken) {
         await BitrixAPI.clearCache();
         alert('Кэш очищен');
-        applyFilters();
+        loadData();
     }
 };
 
@@ -951,7 +873,7 @@ window.testConnection = async () => {
     alert(d.connected ? '✅ OK' : '❌ Ошибка');
 };
 
-window.showVersion = function () {
+window.showVersion = function() {
     alert(`Версия системы: ${buildDate}`);
 };
 

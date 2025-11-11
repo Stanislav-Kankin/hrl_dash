@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bitrix24 Analytics Dashboard</title>
     <script>
-        const buildDate = "2025.11.11.2.4"; // Формат: ГГГГ.ММ.ДД.ВЕРСИЯ
+        const buildDate = "2025.11.11.2.5"; // Формат: ГГГГ.ММ.ДД.ВЕРСИЯ
     </script>
 
     <button id="authButton" onclick="showAuthModal()" style="
@@ -61,8 +61,7 @@
                 <div class="filter-item" style="min-width: auto;">
                     <label style="visibility: hidden;">Действия</label>
                     <div style="display: flex; gap: 10px;">
-                        <button class="apply-btn" onclick="applyFilters(true)">⚡ Быстрая загрузка</button>
-                        <button class="refresh-btn" onclick="applyFilters(false)">📊 Полная загрузка</button>
+                        <button class="apply-btn" onclick="loadData()">📊 Загрузить</button>
                         <button class="refresh-btn" onclick="refreshData()" title="Обновить кэш">🔄 Обновить
                             кэш</button>
                         <button class="clear-btn" onclick="clearCache()" title="Очистить кэш">🧹 Очистить кэш</button>
