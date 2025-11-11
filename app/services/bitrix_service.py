@@ -16,13 +16,13 @@ class BitrixService:
         self._cache = {}
         self._cache_ttl = 10 * 60
         self.executor = ThreadPoolExecutor(max_workers=5)
-        self.max_activities_per_user = 100000  # 🔥 ОГРАНИЧЕНИЕ на количество активностей на пользователя
-        self.max_days_per_request = 100  # 🔥 Максимальный период в днях для одного запроса
+        self.max_activities_per_user = 1000  # 🔥 ОГРАНИЧЕНИЕ на количество активностей на пользователя
+        self.max_days_per_request = 30  # 🔥 Максимальный период в днях для одного запроса
         
     async def ensure_session(self):
         """Создает сессию если её нет"""
         if self.session is None or self.session.closed:
-            timeout = aiohttp.ClientTimeout(total=500)  # 🔥 Увеличиваем таймаут
+            timeout = aiohttp.ClientTimeout(total=120)  # 🔥 Увеличиваем таймаут до 2 минут
             self.session = aiohttp.ClientSession(timeout=timeout)
 
     async def close_session(self):
@@ -390,124 +390,185 @@ class BitrixService:
                 'end': sorted_daily[-1]['date'] if sorted_daily else ''
             }
         }
+
+    # === НОВЫЕ МЕТОДЫ ДЛЯ РАБОТЫ СО СДЕЛКАМИ ===
     
-    async def get_activity_statistics_from_data(self, activities: List[Dict]) -> Dict[str, Any]:
-        """Получение статистики из готового списка активностей (без запросов к Bitrix)"""
-        if not activities:
+    async def get_deals(
+        self,
+        start_date: str = None,
+        end_date: str = None,
+        user_ids: List[str] = None
+    ) -> Optional[List[Dict]]:
+        """Получение списка сделок"""
+        try:
+            params = {
+                'select[]': ['ID', 'TITLE', 'STAGE_ID', 'ASSIGNED_BY_ID', 'DATE_CREATE', 'DATE_MODIFY', 'OPPORTUNITY', 'CURRENCY_ID']
+            }
+
+            # Фильтрация по дате
+            if start_date and end_date:
+                start_date_obj = datetime.fromisoformat(start_date)
+                end_date_obj = datetime.fromisoformat(end_date)
+                params['filter[>=DATE_CREATE]'] = start_date_obj.strftime("%Y-%m-%dT%H:%M:%S")
+                params['filter[<=DATE_CREATE]'] = end_date_obj.strftime("%Y-%m-%dT%H:%M:%S")
+
+            # Фильтрация по пользователям
+            if user_ids:
+                params['filter[ASSIGNED_BY_ID]'] = user_ids
+
+            deals = await self.make_bitrix_request("crm.deal.list", params)
+            if not deals:
+                return []
+
+            # Получаем информацию о стадиях
+            stages = await self.get_deal_stages()
+            stage_map = {stage['STATUS_ID']: stage for stage in stages}
+
+            # Обогащаем сделки данными о стадиях
+            enriched_deals = []
+            for deal in deals:
+                stage_info = stage_map.get(deal.get('STAGE_ID'), {})
+                enriched_deals.append({
+                    'ID': deal.get('ID'),
+                    'TITLE': deal.get('TITLE'),
+                    'STAGE_ID': deal.get('STAGE_ID'),
+                    'STAGE_NAME': stage_info.get('NAME', 'Неизвестно'),
+                    'STAGE_COLOR': stage_info.get('COLOR', '#cccccc'),
+                    'ASSIGNED_BY_ID': deal.get('ASSIGNED_BY_ID'),
+                    'DATE_CREATE': deal.get('DATE_CREATE'),
+                    'DATE_MODIFY': deal.get('DATE_MODIFY'),
+                    'OPPORTUNITY': deal.get('OPPORTUNITY'),
+                    'CURRENCY_ID': deal.get('CURRENCY_ID')
+                })
+
+            logger.info(f"📊 Получено {len(enriched_deals)} сделок")
+            return enriched_deals
+
+        except Exception as e:
+            logger.error(f"Error getting deals: {str(e)}")
+            return None
+
+    async def get_deal_stages(self) -> List[Dict]:
+        """Получение списка стадий сделок"""
+        try:
+            stages = await self.make_bitrix_request("crm.status.list", {
+                'filter[ENTITY_ID]': 'DEAL_STAGE'
+            })
+            return stages if stages else []
+        except Exception as e:
+            logger.error(f"Error getting deal stages: {str(e)}")
+            return []
+
+    async def get_deals_statistics(
+        self,
+        start_date: str = None,
+        end_date: str = None,
+        user_ids: List[str] = None
+    ) -> Dict[str, Any]:
+        """Статистика по сделкам"""
+        try:
+            deals = await self.get_deals(start_date, end_date, user_ids)
+            if not deals:
+                return {}
+
+            # Статистика по стадиям
+            stage_stats = {}
+            user_stats = {}
+            total_value = 0
+
+            for deal in deals:
+                stage_id = deal['STAGE_ID']
+                user_id = deal['ASSIGNED_BY_ID']
+                value = float(deal.get('OPPORTUNITY', 0))
+
+                # Статистика по стадиям
+                if stage_id not in stage_stats:
+                    stage_stats[stage_id] = {
+                        'count': 0,
+                        'value': 0,
+                        'name': deal['STAGE_NAME'],
+                        'color': deal['STAGE_COLOR']
+                    }
+                stage_stats[stage_id]['count'] += 1
+                stage_stats[stage_id]['value'] += value
+
+                # Статистика по пользователям
+                if user_id not in user_stats:
+                    user_stats[user_id] = {
+                        'total_deals': 0,
+                        'by_stage': {},
+                        'total_value': 0
+                    }
+                user_stats[user_id]['total_deals'] += 1
+                user_stats[user_id]['total_value'] += value
+
+                if stage_id not in user_stats[user_id]['by_stage']:
+                    user_stats[user_id]['by_stage'][stage_id] = 0
+                user_stats[user_id]['by_stage'][stage_id] += 1
+
+                total_value += value
+
+            return {
+                'total_deals': len(deals),
+                'total_value': total_value,
+                'stage_stats': stage_stats,
+                'user_stats': user_stats,
+                'deals_by_stage': [
+                    {
+                        'stage_id': stage_id,
+                        'stage_name': stats['name'],
+                        'stage_color': stats['color'],
+                        'count': stats['count'],
+                        'value': stats['value']
+                    }
+                    for stage_id, stats in stage_stats.items()
+                ]
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting deals statistics: {str(e)}")
             return {}
 
-        daily_stats = {}
-        hourly_stats = {str(i).zfill(2): 0 for i in range(24)}
-        type_stats = {}
-        weekday_stats = {
-            'Monday': 0, 'Tuesday': 0, 'Wednesday': 0, 'Thursday': 0,
-            'Friday': 0, 'Saturday': 0, 'Sunday': 0
-        }
-
-        for activity in activities:
-            created_str = activity['CREATED'].replace('Z', '+00:00')
-            activity_date = datetime.fromisoformat(created_str)
-            date_key = activity_date.strftime('%Y-%m-%d')
-            hour_key = activity_date.strftime('%H')
-            weekday = activity_date.strftime('%A')
-            type_id = str(activity['TYPE_ID'])
-
-            if date_key not in daily_stats:
-                daily_stats[date_key] = {'date': date_key, 'day_of_week': weekday, 'total': 0, 'by_type': {}}
-
-            daily_stats[date_key]['total'] += 1
-            daily_stats[date_key]['by_type'][type_id] = daily_stats[date_key]['by_type'].get(type_id, 0) + 1
-            type_stats[type_id] = type_stats.get(type_id, 0) + 1
-            hourly_stats[hour_key] += 1
-            weekday_stats[weekday] += 1
-
-        sorted_daily = sorted(daily_stats.values(), key=lambda x: x['date'])
-
-        return {
-            'total_activities': len(activities),
-            'daily_stats': sorted_daily,
-            'hourly_stats': hourly_stats,
-            'type_stats': type_stats,
-            'weekday_stats': weekday_stats,
-            'date_range': {
-                'start': sorted_daily[0]['date'] if sorted_daily else '',
-                'end': sorted_daily[-1]['date'] if sorted_daily else ''
-            }
-        }
+    async def get_user_deals(self, user_id: str) -> Optional[List[Dict]]:
+        """Получение сделок конкретного пользователя"""
+        return await self.get_deals(user_ids=[user_id])
     
-    async def get_cached_activities_for_selected_users(self, selected_user_ids: List[str], start_date: str, end_date: str, activity_types: List[str] = None) -> Dict:
-        """
-        Проверяет полноту кэша ТОЛЬКО для выбранных пользователей
-        """
+    async def get_all_users(self) -> Optional[List[Dict]]:
+        """Получает список всех пользователей Bitrix24"""
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                placeholders = ','.join('?' for _ in selected_user_ids)
-                
-                # Базовый запрос для выбранных пользователей
-                query = f'''
-                    SELECT raw_data, data_date FROM activities_cache 
-                    WHERE user_id IN ({placeholders}) 
-                    AND data_date BETWEEN ? AND ?
-                '''
-                params = selected_user_ids + [start_date, end_date]
-                
-                # Фильтр по типу активности
-                if activity_types and activity_types != ['all']:
-                    type_placeholders = ','.join('?' for _ in activity_types)
-                    query += f' AND type_id IN ({type_placeholders})'
-                    params.extend(activity_types)
-                
-                query += ' ORDER BY created DESC'
-                
-                cursor = await db.execute(query, params)
-                rows = await cursor.fetchall()
-                
-                if not rows:
-                    return {"activities": [], "missing_days": [], "completeness": 0, "selected_users": selected_user_ids}
-                
-                # Анализируем данные ТОЛЬКО для выбранных пользователей
-                cached_dates = set()
-                activities = []
-                
-                for row in rows:
-                    try:
-                        activity_data = json.loads(row[0])
-                        # 🔥 ВАЖНО: фильтруем по выбранным пользователям на случай если в кэше есть данные других пользователей
-                        if str(activity_data.get('AUTHOR_ID')) in selected_user_ids:
-                            activities.append(activity_data)
-                            cached_dates.add(row[1])
-                    except Exception as e:
-                        continue
-                
-                # Определяем недостающие дни
-                start = datetime.fromisoformat(start_date)
-                end = datetime.fromisoformat(end_date)
-                total_days = (end - start).days + 1
-                
-                missing_days = []
-                current = start
-                while current <= end:
-                    date_str = current.strftime("%Y-%m-%d")
-                    if date_str not in cached_dates:
-                        missing_days.append(date_str)
-                    current += timedelta(days=1)
-                
-                completeness = ((total_days - len(missing_days)) / total_days) * 100
-                
-                logger.info(f"📊 Cache analysis for {len(selected_user_ids)} selected users: {len(activities)} activities, {completeness:.1f}% complete")
-                
-                return {
-                    "activities": activities,
-                    "missing_days": missing_days,
-                    "completeness": completeness,
-                    "cached_days_count": len(cached_dates),
-                    "total_days": total_days,
-                    "selected_users": selected_user_ids
+            cache_key = "all_users"
+            if cache_key in self._cache:
+                cache_time, cached_data = self._cache[cache_key]
+                if (datetime.now() - cache_time).total_seconds() < self._cache_ttl:
+                    return cached_data
+
+            all_users = []
+            start = 0
+            
+            while True:
+                params = {
+                    'start': start
                 }
+                
+                users = await self.make_bitrix_request("user.get", params)
+                if not users:
+                    break
                     
+                all_users.extend(users)
+                
+                if len(users) < 50:
+                    break
+                    
+                start += 50
+                await asyncio.sleep(0.1)
+
+            self._cache[cache_key] = (datetime.now(), all_users)
+            logger.info(f"✅ Loaded {len(all_users)} users from Bitrix24")
+            return all_users
+            
         except Exception as e:
-            logger.error(f"Error analyzing cache for selected users: {e}")
-            return {"activities": [], "missing_days": [], "completeness": 0, "selected_users": selected_user_ids}
+            logger.error(f"Error getting all users: {str(e)}")
+            return None
 
     def clear_cache(self):
         """Очищает кэш"""

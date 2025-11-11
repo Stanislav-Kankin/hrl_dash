@@ -203,6 +203,9 @@ async function initializeDashboard() {
         ActivityCharts.initCharts();
         await loadUsersList();
 
+        // Инициализируем чекбоксы для вкладки сделок
+        renderDealsUserCheckboxes(allUsers);
+
         if (BitrixAPI.authToken && currentUser) {
             await loadData();
         } else {
@@ -1059,6 +1062,7 @@ window.showRegister = showRegister;
 // Добавьте в конец файла
 window.loadDataFast = loadDataFast;
 window.loadDataFromBitrix = loadDataFromBitrix;
+window.switchTab = switchTab;
 
 window.clearCache = async () => {
     if (BitrixAPI.authToken) {

@@ -39,6 +39,49 @@ body {
     opacity: 0.9;
 }
 
+/* Стили для вкладок */
+.tabs-section {
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.tabs {
+    display: flex;
+    padding: 0 25px;
+    gap: 0;
+}
+
+.tab-button {
+    background: #f8f9fa;
+    border: none;
+    padding: 15px 25px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    color: #495057;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s;
+}
+
+.tab-button:hover {
+    background: #e9ecef;
+    color: #2c3e50;
+}
+
+.tab-button.active {
+    background: white;
+    color: #667eea;
+    border-bottom: 3px solid #667eea;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
 .filters-section {
     padding: 25px;
     background: #f8f9fa;
@@ -295,6 +338,16 @@ tr:hover {
 .badge-task { background: #e8f5e8; color: #388e3c; }
 .badge-meeting { background: #fff3e0; color: #f57c00; }
 
+/* Стили для стадий сделок */
+.stage-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+    color: white;
+}
+
 .loading {
     text-align: center;
     padding: 40px;
@@ -490,6 +543,9 @@ tr:hover {
     #customDateRange {
         min-width: 280px;
     }
+    .tabs {
+        padding: 0 20px;
+    }
 }
 
 @media (max-width: 992px) {
@@ -512,6 +568,13 @@ tr:hover {
     
     .admin-section {
         padding: 15px;
+    }
+    .tabs {
+        flex-wrap: wrap;
+    }
+    .tab-button {
+        flex: 1;
+        min-width: 120px;
     }
 }
 
@@ -553,6 +616,13 @@ tr:hover {
     .chart-container {
         padding: 15px;
     }
+    .tabs {
+        padding: 0 15px;
+    }
+    .tab-button {
+        padding: 12px 15px;
+        font-size: 13px;
+    }
 }
 
 @media (max-width: 576px) {
@@ -581,6 +651,13 @@ tr:hover {
     }
     .header h1 {
         font-size: 1.8em;
+    }
+    .tabs {
+        flex-direction: column;
+    }
+    .tab-button {
+        width: 100%;
+        text-align: center;
     }
 }
 

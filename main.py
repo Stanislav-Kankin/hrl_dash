@@ -644,36 +644,24 @@ async def get_fast_stats(
             return {"success": False, "error": "Список сотрудников пуст"}
 
         user_info_map = {str(u['ID']): u for u in presales_users}
-        
-        if user_ids_list:
-            target_user_ids = user_ids_list
-        else:
-            target_user_ids = list(user_info_map.keys())
+        target_user_ids = user_ids_list if user_ids_list else list(user_info_map.keys())
 
         logger.info(f"⚡ Fast stats: {start_date} to {end_date}, selected users: {len(target_user_ids)}")
 
-        cache_analysis = await warehouse_service.get_cached_activities_for_selected_users(
-            target_user_ids, start_date, end_date, activity_types
+        # 🔥 ТОЛЬКО ДАННЫЕ ИЗ КЭША - НИКАКИХ ЗАПРОСОВ К BITRIX
+        cache_analysis = await warehouse_service.get_cached_activities_optimized(
+            target_user_ids, start_date, end_date
         )
         
         cached_activities = cache_analysis["activities"]
         completeness = cache_analysis["completeness"]
-        user_count = cache_analysis.get("user_count", len(target_user_ids))
 
-        # 🔥 АДАПТИВНЫЕ ПОРОГИ в зависимости от количества пользователей
-        required_completeness = 80.0  # По умолчанию
-        
-        if user_count == 1:
-            required_completeness = 60.0  # Для одного пользователя - 60% рабочих дней
-        elif user_count <= 3:
-            required_completeness = 70.0  # Для 2-3 пользователей - 70%
-        # Для 4+ пользователей остается 80%
-
-        if completeness >= required_completeness:
+        # 🔥 ТОЛЬКО если данные полностью в кэше (>70%)
+        if completeness >= 70.0:
             activities = cached_activities
-            logger.info(f"⚡ Using cached data for {user_count} users: {completeness:.1f}% complete (required: {required_completeness}%)")
+            logger.info(f"⚡ Using cached data for {len(target_user_ids)} users: {completeness:.1f}% complete (required: 70.0%)")
             
-            # Логика подсчета статистики (остается без изменений)
+            # --- Логика подсчета статистики из активностей ---
             user_activities = {}
             if activities:
                 for act in activities:
@@ -683,8 +671,9 @@ async def get_fast_stats(
                             user_activities[uid] = []
                         user_activities[uid].append(act)
 
+            response_users = user_ids_list if user_ids_list else list(user_info_map.keys())
             user_stats = []
-            for uid in target_user_ids:
+            for uid in response_users:
                 info = user_info_map.get(uid)
                 if not info:
                     continue
@@ -710,7 +699,7 @@ async def get_fast_stats(
                     "last_activity_date": last_act.strftime('%Y-%m-%d %H:%M') if last_act else "Нет данных"
                 })
 
-            total_activities = sum(len(user_activities.get(uid, [])) for uid in target_user_ids)
+            total_activities = sum(len(user_activities.get(uid, [])) for uid in response_users)
 
             result = {
                 "success": True, 
@@ -719,39 +708,75 @@ async def get_fast_stats(
                 "cache_used": True,
                 "from_cache": True,
                 "cache_completeness": completeness,
-                "required_completeness": required_completeness,
                 "activities_count": len(activities),
                 "start_date": start_date,
-                "end_date": end_date,
-                "selected_users_count": len(target_user_ids)
+                "end_date": end_date
             }
 
             if include_statistics:
-                statistics = await bitrix_service.get_activity_statistics_from_data(activities)
+                # Используем существующий метод для статистики
+                statistics = await bitrix_service.get_activity_statistics(
+                    start_date=start_date,
+                    end_date=end_date,
+                    user_ids=target_user_ids
+                )
                 result["statistics"] = statistics
 
             return result
         else:
-            user_coverage_info = cache_analysis.get("user_coverage_info", {})
-            coverage_details = []
-            for user_id in target_user_ids:
-                coverage = user_coverage_info.get(user_id, {})
-                user_name = user_info_map.get(user_id, {}).get('NAME', 'Unknown')
-                coverage_details.append(f"{user_name}: {coverage.get('days_with_data', 0)}/{coverage.get('total_days', 0)} дней")
-            
+            # 🔥 Данных в кэше недостаточно
             return {
                 "success": False,
                 "from_cache": False,
                 "cache_completeness": completeness,
-                "required_completeness": required_completeness,
-                "selected_users_count": len(target_user_ids),
-                "coverage_details": coverage_details,
-                "error": f"Данные в кэше неполные ({completeness:.1f}%, требуется {required_completeness}%). Используйте загрузку из Bitrix."
+                "error": f"Данные в кэше неполные ({completeness:.1f}%). Используйте загрузку из Bitrix."
             }
         
     except Exception as e:
         logger.error(f"❌ Error in get_fast_stats: {str(e)}", exc_info=True)
         return {"success": False, "error": str(e)}
+
+@app.get("/api/deals/list")
+async def get_deals_list(
+    start_date: str = None,
+    end_date: str = None,
+    user_ids: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Получение списка сделок"""
+    try:
+        logger.info(f"🔍 GET /api/deals/list called with: start_date={start_date}, end_date={end_date}, user_ids={user_ids}")
+        
+        user_ids_list = user_ids.split(',') if user_ids else []
+        deals = await bitrix_service.get_deals(
+            start_date=start_date,
+            end_date=end_date,
+            user_ids=user_ids_list
+        )
+        
+        logger.info(f"✅ GET /api/deals/list returning {len(deals) if deals else 0} deals")
+        
+        return {
+            "success": True,
+            "deals": deals,
+            "count": len(deals) if deals else 0
+        }
+    except Exception as e:
+        logger.error(f"❌ Error in get_deals_list: {str(e)}", exc_info=True)
+        return {"success": False, "error": str(e)}
+    
+@app.get("/api/all-users")
+async def get_all_users(current_user: dict = Depends(get_current_user)):
+    """Получение списка всех пользователей"""
+    try:
+        users = await bitrix_service.get_all_users()
+        if not users:
+            return {"users": []}
+        formatted = [{"ID": str(u['ID']), "NAME": u.get('NAME', ''), "LAST_NAME": u.get('LAST_NAME', '')} for u in users]
+        return {"users": formatted}
+    except Exception as e:
+        logger.error(f"Error in all-users: {str(e)}")
+        return {"users": [], "error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn

@@ -146,4 +146,48 @@ class BitrixAPI {
         const response = await this.makeRequest('/api/admin/users-count');
         return await response.json();
     }
+
+    // Добавьте эти методы в класс BitrixAPI:
+
+    static async getDealsList(startDate = null, endDate = null, userIds = []) {
+        let url = '/api/deals/list';
+        const params = [];
+
+        if (startDate) params.push(`start_date=${encodeURIComponent(startDate)}`);
+        if (endDate) params.push(`end_date=${encodeURIComponent(endDate)}`);
+        if (userIds.length > 0) params.push(`user_ids=${userIds.join(',')}`);
+
+        if (params.length > 0) {
+            url += `?${params.join('&')}`;
+        }
+
+        const response = await this.makeRequest(url);
+        return await response.json();
+    }
+
+    static async getDealsStats(startDate = null, endDate = null, userIds = []) {
+        let url = '/api/deals/stats';
+        const params = [];
+
+        if (startDate) params.push(`start_date=${encodeURIComponent(startDate)}`);
+        if (endDate) params.push(`end_date=${encodeURIComponent(endDate)}`);
+        if (userIds.length > 0) params.push(`user_ids=${userIds.join(',')}`);
+
+        if (params.length > 0) {
+            url += `?${params.join('&')}`;
+        }
+
+        const response = await this.makeRequest(url);
+        return await response.json();
+    }
+
+    static async getDealsStages() {
+        const response = await this.makeRequest('/api/deals/stages');
+        return await response.json();
+    }
+
+    static async getAllUsers() {
+        const response = await this.makeRequest('/api/all-users');
+        return await response.json();
+    }
 }
