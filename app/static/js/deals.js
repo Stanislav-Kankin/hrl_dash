@@ -23,7 +23,7 @@ class DealsManager {
             return '#3b82f6';
         }
         if (name.includes('серый') || name.includes('gray') || name.includes('grey')) {
-            return '#6b7280';
+            return '#c7c7c7ff';
         }
         if (name.includes('зеленый') || name.includes('green')) {
             return '#10b981';
