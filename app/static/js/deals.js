@@ -850,6 +850,9 @@ async function loadDealsData() {
 async function loadUserAllDeals() {
     const selectedUsers = getSelectedDealsUsers();
 
+    // 🔥 ДОБАВИТЬ ОТЛАДКУ
+    console.log('🔍 DEBUG loadUserAllDeals - selected users:', selectedUsers);
+    
     if (selectedUsers.length === 0) {
         showNotification('❌ Выберите хотя бы одного сотрудника', 'error');
         return;
@@ -874,11 +877,22 @@ async function loadUserAllDeals() {
             });
         }
 
+        // 🔥 ДОБАВИТЬ ПРОВЕРКУ ПЕРЕДАВАЕМЫХ ДАННЫХ
+        console.log('🔍 Making API call with user_ids:', selectedUsers);
+        
         const dealsResponse = await BitrixAPI.getUserAllDeals(selectedUsers);
 
         console.log('👥 All deals response:', dealsResponse);
 
         if (dealsResponse.success && dealsResponse.deals) {
+            // 🔥 ПРОВЕРИТЬ РАСПРЕДЕЛЕНИЕ ПОЛЬЗОВАТЕЛЕЙ В ОТВЕТЕ
+            const userDistribution = {};
+            dealsResponse.deals.forEach(deal => {
+                const userId = deal.ASSIGNED_BY_ID;
+                userDistribution[userId] = (userDistribution[userId] || 0) + 1;
+            });
+            console.log('📊 User distribution in response:', userDistribution);
+
             DealsManager.currentDealsData = dealsResponse.deals;
             DealsManager.displayDealsTable(dealsResponse.deals, userInfoMap, true);
 

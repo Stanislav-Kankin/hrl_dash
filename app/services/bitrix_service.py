@@ -20,7 +20,7 @@ class BitrixService:
     async def ensure_session(self):
         """Создает сессию если её нет"""
         if self.session is None or self.session.closed:
-            timeout = aiohttp.ClientTimeout(total=120)  # 🔥 Увеличиваем таймаут до 2 минут
+            timeout = aiohttp.ClientTimeout(total=120)
             self.session = aiohttp.ClientSession(timeout=timeout)
 
     async def close_session(self):
@@ -41,8 +41,8 @@ class BitrixService:
         logger.info(f"🔍 Bitrix API Request: {method}")
         if params:
             logger.info(f"🔍 Params keys: {list(params.keys())}")
-            if 'filter[AUTHOR_ID]' in params:
-                logger.info(f"🔍 AUTHOR_ID filter: {params['filter[AUTHOR_ID]']}")
+            if 'filter[ASSIGNED_BY_ID]' in params:
+                logger.info(f"🔍 ASSIGNED_BY_ID filter: {params['filter[ASSIGNED_BY_ID]']}")
         
         try:
             async with self.session.get(url, params=params) as response:
@@ -126,7 +126,6 @@ class BitrixService:
                 start_date_obj = start_date_obj.replace(hour=0, minute=0, second=0, microsecond=0)
                 end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59, microsecond=999999)
                 
-                # 🔥 УБРАЛИ ПРОВЕРКУ НА БОЛЬШИЕ ПЕРИОДЫ - ЗАГРУЖАЕМ ВСЕ
                 total_days = (end_date_obj - start_date_obj).days + 1
                 logger.info(f"📅 Loading activities for {total_days} days")
                         
@@ -203,8 +202,8 @@ class BitrixService:
         user_activities = []
         start = 0
         request_count = 0
-        max_requests = 20  # 🔥 ОГРАНИЧИВАЕМ КОЛИЧЕСТВО ЗАПРОСОВ
-        max_activities_per_user = 500  # 🔥 МАКСИМУМ АКТИВНОСТЕЙ НА ПОЛЬЗОВАТЕЛЯ
+        max_requests = 20
+        max_activities_per_user = 500
 
         while request_count < max_requests and len(user_activities) < max_activities_per_user:
             params = {
@@ -227,10 +226,9 @@ class BitrixService:
             user_activities.extend(activities)
             logger.info(f"🔍 User {user_id} - Batch {request_count + 1}: got {len(activities)} activities, total: {len(user_activities)}")
 
-            # 🔥 ПРОВЕРКА ЛИМИТА
             if len(user_activities) >= max_activities_per_user:
                 logger.warning(f"⚠️ User {user_id} reached activity limit ({max_activities_per_user}), stopping")
-                user_activities = user_activities[:max_activities_per_user]  # Обрезаем до лимита
+                user_activities = user_activities[:max_activities_per_user]
                 break
 
             if len(activities) < 50:
@@ -239,7 +237,7 @@ class BitrixService:
 
             start += 50
             request_count += 1
-            await asyncio.sleep(0.2)  # 🔥 Увеличиваем задержку для API
+            await asyncio.sleep(0.2)
 
         logger.info(f"🔍 User {user_id} - COMPLETED: {len(user_activities)} total activities")
         return user_activities
@@ -254,11 +252,9 @@ class BitrixService:
         for activity in activities:
             type_id = str(activity.get('TYPE_ID'))
             
-            # Для задач временно считаем ВСЕ активными
-            if type_id == '4':  # Задача
+            if type_id == '4':
                 completed_activities.append(activity)
             else:
-                # Для звонков, комментариев и встреч считаем все завершенными
                 completed_activities.append(activity)
         
         logger.info(f"📊 Simplified filter: {len(activities)} -> {len(completed_activities)} activities")
@@ -365,14 +361,36 @@ class BitrixService:
         user_ids: List[str] = None,
         limit: int = None
     ) -> Optional[List[Dict]]:
-        """Получение списка сделок - БЕЗ ЖЕСТКИХ ОГРАНИЧЕНИЙ"""
+        """Получение списка сделок - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
         try:
+            logger.info(f"📊 Starting deals loading: start_date={start_date}, end_date={end_date}, users={user_ids}")
+            
+            # 🔥 ИСПРАВЛЕНИЕ: Если передано несколько user_ids, делаем отдельные запросы
+            if user_ids and len(user_ids) > 1:
+                logger.info(f"📊 Multiple users detected ({len(user_ids)}), making separate requests")
+                
+                all_deals = []
+                for user_id in user_ids:
+                    logger.info(f"📊 Loading deals for user {user_id}")
+                    user_deals = await self._get_deals_for_single_user(
+                        user_id, start_date, end_date, limit
+                    )
+                    if user_deals:
+                        all_deals.extend(user_deals)
+                        logger.info(f"📊 User {user_id}: loaded {len(user_deals)} deals")
+                    await asyncio.sleep(0.1)
+                
+                logger.info(f"📊 Multiple users loading COMPLETED: {len(all_deals)} total deals")
+                
+                if not all_deals:
+                    return []
+                
+                return await self._enrich_deals_with_stages(all_deals)
+            
+            # 🔥 Оригинальный код для одного пользователя или без фильтра
             all_deals = []
             start = 0
-            batch_size = 50
             total_loaded = 0
-            
-            logger.info(f"📊 Starting deals loading: start_date={start_date}, end_date={end_date}, users={user_ids}")
             
             while True:
                 params = {
@@ -390,8 +408,10 @@ class BitrixService:
                     except Exception as e:
                         logger.error(f"Error parsing dates: {e}")
 
-                # Фильтрация по пользователям
-                if user_ids:
+                # 🔥 ИСПРАВЛЕНИЕ: Правильная фильтрация по пользователям
+                if user_ids and len(user_ids) == 1:
+                    params['filter[ASSIGNED_BY_ID]'] = user_ids[0]
+                elif user_ids and len(user_ids) > 1:
                     params['filter[ASSIGNED_BY_ID]'] = user_ids
 
                 logger.info(f"📊 Making Bitrix request for deals, start={start}")
@@ -407,91 +427,145 @@ class BitrixService:
                 batch_number = start // 50 + 1
                 logger.info(f"📊 Batch {batch_number}: got {len(deals)} deals, total: {total_loaded}")
 
-                # 🔥 ПРОГРЕСС ДЛЯ БОЛЬШИХ НАБОРОВ ДАННЫХ
                 if total_loaded % 500 == 0:
                     logger.info(f"📊 Progress: {total_loaded} deals loaded...")
 
-                # 🔥 МЯГКИЙ ЛИМИТ ТОЛЬКО ДЛЯ ОЧЕНЬ БОЛЬШИХ НАБОРОВ (можно убрать совсем)
                 if total_loaded >= 5000:
                     logger.warning(f"⚠️ Reached large dataset limit ({total_loaded} deals). Consider filtering by date.")
                     break
 
-                # 🔥 ЕСЛИ ПЕРЕДАЛИ ЛИМИТ - ОСТАНАВЛИВАЕМСЯ
                 if limit and total_loaded >= limit:
                     logger.info(f"📊 Reached user limit of {limit} deals")
                     all_deals = all_deals[:limit]
                     break
 
-                # Если в ответе меньше 50 элементов - значит это последняя страница
                 if len(deals) < 50:
                     logger.info("📊 Last batch (less than 50 items)")
                     break
 
                 start += 50
-                await asyncio.sleep(0.1)  # 🔥 Небольшая пауза между запросами
+                await asyncio.sleep(0.1)
 
             logger.info(f"📊 Deal loading COMPLETED: {len(all_deals)} total deals")
 
             if not all_deals:
                 return []
 
-            # 🔥 ОБРАБОТКА СТАДИЙ (остается без изменений)
-            all_stages = await self.get_deal_stages()
-            stage_map = {}
-            for stage in all_stages:
-                stage_id = stage.get('STATUS_ID')
-                stage_map[stage_id] = stage
-            
-            enriched_deals = []
-            for deal in all_deals:
-                stage_id = deal.get('STAGE_ID')
-                type_id = deal.get('TYPE_ID')
-                status_id = deal.get('STATUS_ID')
-                
-                # Пробуем найти стадию в порядке приоритета
-                stage_info = None
-                for potential_id in [stage_id, type_id, status_id]:
-                    if potential_id and potential_id in stage_map:
-                        stage_info = stage_map[potential_id]
-                        break
-                
-                # Если не нашли, создаем базовую информацию
-                if not stage_info:
-                    stage_info = {
-                        'NAME': stage_id or 'Неизвестно',
-                        'COLOR': '#cccccc',
-                        'ENTITY_ID': 'UNKNOWN'
-                    }
-                
-                enriched_deals.append({
-                    'ID': deal.get('ID'),
-                    'TITLE': deal.get('TITLE'),
-                    'STAGE_ID': stage_id,
-                    'TYPE_ID': type_id,
-                    'STATUS_ID': status_id,
-                    'STAGE_NAME': stage_info.get('NAME', 'Неизвестно'),
-                    'STAGE_COLOR': stage_info.get('COLOR', '#cccccc'),
-                    'ENTITY_ID': stage_info.get('ENTITY_ID', 'UNKNOWN'),
-                    'ASSIGNED_BY_ID': deal.get('ASSIGNED_BY_ID'),
-                    'DATE_CREATE': deal.get('DATE_CREATE'),
-                    'DATE_MODIFY': deal.get('DATE_MODIFY'),
-                    'OPPORTUNITY': deal.get('OPPORTUNITY'),
-                    'CURRENCY_ID': deal.get('CURRENCY_ID')
-                })
-
-            # Логируем распределение по стадиям
-            stage_distribution = {}
-            for deal in enriched_deals:
-                stage_name = deal['STAGE_NAME']
-                stage_distribution[stage_name] = stage_distribution.get(stage_name, 0) + 1
-            
-            logger.info(f"📊 Final stage distribution: {stage_distribution}")
-
-            return enriched_deals
+            return await self._enrich_deals_with_stages(all_deals)
 
         except Exception as e:
             logger.error(f"❌ Error getting deals: {str(e)}", exc_info=True)
             return None
+
+    async def _get_deals_for_single_user(
+        self,
+        user_id: str,
+        start_date: str = None,
+        end_date: str = None,
+        limit: int = None
+    ) -> List[Dict]:
+        """Получение сделок для одного пользователя"""
+        try:
+            user_deals = []
+            start = 0
+            total_loaded = 0
+            
+            while True:
+                params = {
+                    'select[]': ['ID', 'TITLE', 'STAGE_ID', 'ASSIGNED_BY_ID', 'DATE_CREATE', 'DATE_MODIFY', 'OPPORTUNITY', 'CURRENCY_ID', 'TYPE_ID', 'STATUS_ID'],
+                    'filter[ASSIGNED_BY_ID]': user_id,
+                    'start': start
+                }
+
+                if start_date and end_date:
+                    try:
+                        start_date_obj = datetime.fromisoformat(start_date)
+                        end_date_obj = datetime.fromisoformat(end_date)
+                        params['filter[>=DATE_CREATE]'] = start_date_obj.strftime("%Y-%m-%d")
+                        params['filter[<=DATE_CREATE]'] = end_date_obj.strftime("%Y-%m-%d")
+                    except Exception as e:
+                        logger.error(f"Error parsing dates: {e}")
+
+                deals = await self.make_bitrix_request("crm.deal.list", params)
+                
+                if not deals:
+                    break
+
+                user_deals.extend(deals)
+                total_loaded += len(deals)
+
+                if limit and total_loaded >= limit:
+                    user_deals = user_deals[:limit]
+                    break
+
+                if len(deals) < 50:
+                    break
+
+                start += 50
+                await asyncio.sleep(0.1)
+
+            logger.info(f"📊 User {user_id}: loaded {len(user_deals)} deals")
+            return user_deals
+
+        except Exception as e:
+            logger.error(f"Error getting deals for user {user_id}: {str(e)}")
+            return []
+
+    async def _enrich_deals_with_stages(self, deals: List[Dict]) -> List[Dict]:
+        """Обогащает сделки информацией о стадиях"""
+        if not deals:
+            return []
+
+        all_stages = await self.get_deal_stages()
+        stage_map = {}
+        for stage in all_stages:
+            stage_id = stage.get('STATUS_ID')
+            stage_map[stage_id] = stage
+        
+        enriched_deals = []
+        for deal in deals:
+            stage_id = deal.get('STAGE_ID')
+            type_id = deal.get('TYPE_ID')
+            status_id = deal.get('STATUS_ID')
+            
+            stage_info = None
+            for potential_id in [stage_id, type_id, status_id]:
+                if potential_id and potential_id in stage_map:
+                    stage_info = stage_map[potential_id]
+                    break
+            
+            if not stage_info:
+                stage_info = {
+                    'NAME': stage_id or 'Неизвестно',
+                    'COLOR': '#cccccc',
+                    'ENTITY_ID': 'UNKNOWN'
+                }
+            
+            enriched_deals.append({
+                'ID': deal.get('ID'),
+                'TITLE': deal.get('TITLE'),
+                'STAGE_ID': stage_id,
+                'TYPE_ID': type_id,
+                'STATUS_ID': status_id,
+                'STAGE_NAME': stage_info.get('NAME', 'Неизвестно'),
+                'STAGE_COLOR': stage_info.get('COLOR', '#cccccc'),
+                'ENTITY_ID': stage_info.get('ENTITY_ID', 'UNKNOWN'),
+                'ASSIGNED_BY_ID': deal.get('ASSIGNED_BY_ID'),
+                'DATE_CREATE': deal.get('DATE_CREATE'),
+                'DATE_MODIFY': deal.get('DATE_MODIFY'),
+                'OPPORTUNITY': deal.get('OPPORTUNITY'),
+                'CURRENCY_ID': deal.get('CURRENCY_ID')
+            })
+
+        # 🔥 ДОБАВЛЯЕМ ЛОГИРОВАНИЕ РАСПРЕДЕЛЕНИЯ ПО ПОЛЬЗОВАТЕЛЯМ
+        user_distribution = {}
+        for deal in enriched_deals:
+            user_id = deal['ASSIGNED_BY_ID']
+            user_distribution[user_id] = user_distribution.get(user_id, 0) + 1
+        
+        logger.info(f"📊 Final user distribution in deals: {user_distribution}")
+
+        return enriched_deals
 
     async def get_deals_statistics_enhanced(
         self,
@@ -510,7 +584,6 @@ class BitrixService:
                     'deals_by_type': []
                 }
 
-            # Статистика по стадиям
             stage_stats = {}
             type_stats = {}
             total_value = 0
@@ -522,7 +595,6 @@ class BitrixService:
                 type_id = deal['TYPE_ID']
                 value = float(deal.get('OPPORTUNITY', 0) or 0)
 
-                # Статистика по стадиям
                 if stage_name not in stage_stats:
                     stage_stats[stage_name] = {
                         'count': 0,
@@ -532,7 +604,6 @@ class BitrixService:
                 stage_stats[stage_name]['count'] += 1
                 stage_stats[stage_name]['value'] += value
 
-                # Статистика по типам
                 if type_id not in type_stats:
                     type_stats[type_id] = {
                         'count': 0,
@@ -543,7 +614,6 @@ class BitrixService:
 
                 total_value += value
 
-            # Преобразуем в список для фронтенда
             deals_by_stage = [
                 {
                     'stage_name': stage_name,
@@ -554,7 +624,6 @@ class BitrixService:
                 for stage_name, stats in stage_stats.items()
             ]
 
-            # Сортируем по количеству сделок
             deals_by_stage.sort(key=lambda x: x['count'], reverse=True)
 
             return {
@@ -576,11 +645,10 @@ class BitrixService:
     async def get_deal_stage_history(self, deal_id: str) -> Optional[List[Dict]]:
         """Получение истории изменения стадий сделки"""
         try:
-            # Используем метод timeline для получения истории
             timeline = await self.make_bitrix_request("crm.timeline.list", {
                 'filter[ENTITY_ID]': deal_id,
                 'filter[ENTITY_TYPE]': 'deal',
-                'filter[TYPE_CATEGORY_ID]': '1'  # Изменения
+                'filter[TYPE_CATEGORY_ID]': '1'
             })
             
             if not timeline:
@@ -588,7 +656,7 @@ class BitrixService:
                 
             stage_history = []
             for event in timeline:
-                if event.get('TYPE_ID') == '1':  # Изменение полей
+                if event.get('TYPE_ID') == '1':
                     data = event.get('DATA', {})
                     if 'STAGE_ID' in data:
                         stage_history.append({
@@ -609,7 +677,6 @@ class BitrixService:
         try:
             all_stages = []
             
-            # Основные стадии воронки
             stages = await self.make_bitrix_request("crm.status.list", {
                 'filter[ENTITY_ID]': 'DEAL_STAGE'
             })
@@ -617,7 +684,6 @@ class BitrixService:
                 all_stages.extend(stages)
                 logger.info(f"📊 Loaded {len(stages)} DEAL_STAGE stages")
             
-            # Типы сделок
             deal_types = await self.make_bitrix_request("crm.status.list", {
                 'filter[ENTITY_ID]': 'DEAL_TYPE'
             })
@@ -625,7 +691,6 @@ class BitrixService:
                 all_stages.extend(deal_types)
                 logger.info(f"📊 Loaded {len(deal_types)} DEAL_TYPE stages")
             
-            # Общие статусы
             statuses = await self.make_bitrix_request("crm.status.list", {
                 'filter[ENTITY_ID]': 'STATUS'
             })
@@ -656,7 +721,6 @@ class BitrixService:
                     'deals_by_stage': []
                 }
 
-            # Статистика по стадиям
             stage_stats = {}
             total_value = 0
 
@@ -664,7 +728,6 @@ class BitrixService:
                 stage_id = deal['STAGE_ID']
                 value = float(deal.get('OPPORTUNITY', 0) or 0)
 
-                # Статистика по стадиям
                 if stage_id not in stage_stats:
                     stage_stats[stage_id] = {
                         'count': 0,
@@ -676,7 +739,6 @@ class BitrixService:
                 stage_stats[stage_id]['value'] += value
                 total_value += value
 
-            # Преобразуем в список для фронтенда
             deals_by_stage = [
                 {
                     'stage_id': stage_id,
@@ -749,7 +811,7 @@ class BitrixService:
         end_date: str,
         user_ids: List[str] = None,
         activity_types: List[str] = None,
-        chunk_size_days: int = 7  # 🔥 Разбиваем на недельные chunks
+        chunk_size_days: int = 7
     ) -> Optional[List[Dict]]:
         """Оптимизированное получение активностей для больших периодов"""
         try:
@@ -759,13 +821,11 @@ class BitrixService:
             
             logger.info(f"📅 OPTIMIZED Loading: {total_days} days, chunk size: {chunk_size_days} days")
             
-            # 🔥 Для больших периодов разбиваем на части
-            if total_days > 14:  # Если больше 2 недель - разбиваем
+            if total_days > 14:
                 return await self._get_activities_chunked(
                     start_date_obj, end_date_obj, user_ids, activity_types, chunk_size_days
                 )
             else:
-                # Для небольших периодов используем обычный метод
                 return await self.get_activities(
                     start_date=start_date,
                     end_date=end_date,
@@ -798,7 +858,6 @@ class BitrixService:
                 
                 logger.info(f"📅 Chunk {chunk_number}: {chunk_start_str} to {chunk_end_str}")
                 
-                # Получаем данные для текущего chunk
                 chunk_activities = await self.get_activities(
                     start_date=chunk_start_str,
                     end_date=chunk_end_str,
@@ -810,11 +869,9 @@ class BitrixService:
                     all_activities.extend(chunk_activities)
                     logger.info(f"📅 Chunk {chunk_number} completed: {len(chunk_activities)} activities")
                 
-                # Переходим к следующему chunk
                 current_start = current_end + timedelta(days=1)
                 chunk_number += 1
                 
-                # 🔥 Пауза между chunks чтобы не перегружать API
                 await asyncio.sleep(1)
             
             logger.info(f"📅 All chunks completed: {len(all_activities)} total activities")
@@ -825,7 +882,6 @@ class BitrixService:
         try:
             logger.info(f"⏱️ Getting deals with timing info for users: {user_ids}")
             
-            # Сначала получаем сделки
             deals = await self.get_deals(user_ids=user_ids, limit=limit)
             if not deals:
                 return []
@@ -837,8 +893,6 @@ class BitrixService:
                 stage_id = deal.get('STAGE_ID')
                 created_date = deal.get('DATE_CREATE')
                 
-                # 🔥 АНАЛИЗИРУЕМ ВРЕМЯ ВЗЯТИЯ В РАБОТУ
-                # "Взятие в работу" - это когда сделка ушла из серой/начальной стадии
                 taken_to_work_date = await self._get_taken_to_work_date(deal_id, created_date)
                 
                 enriched_deal = {
@@ -860,22 +914,16 @@ class BitrixService:
     async def _get_taken_to_work_date(self, deal_id: str, created_date: str) -> Optional[str]:
         """Определяет дату взятия сделки в работу"""
         try:
-            # 🔥 ОПРЕДЕЛЯЕМ СЕРЫЕ/НАЧАЛЬНЫЕ СТАДИИ
-            initial_stages = ['NEW', 'PREPARATION', '1', 'C1', 'C1:NEW']  # Примеры ID начальных стадий
+            initial_stages = ['NEW', 'PREPARATION', '1', 'C1', 'C1:NEW']
             
-            # Получаем историю сделки
             history = await self.get_deal_stage_history(deal_id)
             if not history:
-                return created_date  # Если истории нет, считаем что взяли сразу
+                return created_date
                 
-            # Ищем первое изменение с серой на не-серую стадию
             for i, event in enumerate(history):
                 current_stage = event.get('stage_id', '')
                 stage_name = event.get('stage_name', '').lower()
                 
-                # 🔥 СЧИТАЕМ ЧТО СДЕЛКА ВЗЯТА В РАБОТУ КОГДА:
-                # 1. Ушла из серой/начальной стадии
-                # 2. Или когда попала на оранжевую стадию
                 is_initial_stage = (
                     current_stage in initial_stages or
                     'нов' in stage_name or
@@ -893,7 +941,7 @@ class BitrixService:
                 if not is_initial_stage or is_in_work_stage:
                     return event.get('date', created_date)
                     
-            return created_date  # Если не нашли, считаем что взяли сразу
+            return created_date
             
         except Exception as e:
             logger.error(f"Error getting taken to work date: {e}")
