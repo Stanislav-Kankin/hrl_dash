@@ -9,6 +9,125 @@ class DealsManager {
     static currentView = 'period';
     static currentUserInfoMap = null;
 
+    // Универсальная функция для получения цвета стадии
+    static getStageColor(stageName) {
+        if (!stageName) return '#cccccc';
+
+        const name = stageName.toLowerCase();
+
+        // Основные цвета из таблицы
+        if (name.includes('голубой') || name.includes('blue')) {
+            return '#0ea5e9';
+        }
+        if (name.includes('синий') || name.includes('dark blue')) {
+            return '#3b82f6';
+        }
+        if (name.includes('серый') || name.includes('gray') || name.includes('grey')) {
+            return '#6b7280';
+        }
+        if (name.includes('зеленый') || name.includes('green')) {
+            return '#10b981';
+        }
+        if (name.includes('красный') || name.includes('red')) {
+            return '#ef4444';
+        }
+        if (name.includes('желтый') || name.includes('yellow')) {
+            return '#eab308';
+        }
+        if (name.includes('фиолетовый') || name.includes('purple')) {
+            return '#8b5cf6';
+        }
+        if (name.includes('розовый') || name.includes('pink')) {
+            return '#ec4899';
+        }
+        if (name.includes('оранжевый') || name.includes('orange')) {
+            return '#f97316';
+        }
+        if (name.includes('бирюзовый') || name.includes('teal')) {
+            return '#14b8a6';
+        }
+        if (name.includes('лаймовый') || name.includes('lime')) {
+            return '#84cc16';
+        }
+        if (name.includes('индиго') || name.includes('indigo')) {
+            return '#6366f1';
+        }
+        if (name.includes('фуксия') || name.includes('fuchsia')) {
+            return '#d946ef';
+        }
+        if (name.includes('циан') || name.includes('cyan')) {
+            return '#06b6d4';
+        }
+        if (name.includes('аметист') || name.includes('amethyst')) {
+            return '#a855f7';
+        }
+
+        // Логика статусов сделок
+        if (name.includes('проигр') || name.includes('lost') || name.includes('отказ') || 
+            name.includes('выбрали конкурента') || name.includes('нереал') || name.includes('не реал')) {
+            return '#ef4444'; // Красный для проигранных
+        }
+
+        if (name.includes('выигр') || name.includes('won') || name.includes('успеш') || 
+            name.includes('заверш') || name.includes('продажа')) {
+            return '#10b981'; // Зеленый для успешных
+        }
+
+        if (name.includes('отложен') || name.includes('недозвон') || name.includes('отложенное решение')) {
+            return '#9b364fff'; // Серый для отложенных
+        }
+
+        if (name.includes('обработ') || name.includes('в работе') || name.includes('взято') ||
+            name.includes('кп') || name.includes('коммерч') || name.includes('подготов') ||
+            name.includes('negotiation') || name.includes('processing')) {
+            return '#f97316'; // Оранжевый для в работе
+        }
+
+        if (name.includes('нов') || name.includes('первич') || name.includes('инициир') ||
+            name.includes('new') || name.includes('initial') || name.includes('lead')) {
+            return '#3b82f6'; // Синий для новых
+        }
+
+        if (name.includes('архив') || name.includes('не опред') || name.includes('unknown')) {
+            return '#9ca3af'; // Серый для архивных
+        }
+
+        // Цвет по умолчанию
+        return '#6366f1';
+    }
+
+    // Цвета соответствующие стадиям из таблицы (для обратной совместимости)
+    static getStageColors() {
+        return {
+            'Голубой': '#0ea5e9',
+            'Синий': '#3b82f6',  
+            'Серый': '#6b7280',
+            'Зеленый': '#10b981',
+            'Красный': '#ef4444',
+            'Желтый': '#eab308',
+            'Фиолетовый': '#8b5cf6',
+            'Розовый': '#ec4899',
+            'Оранжевый': '#f97316',
+            'Бирюзовый': '#14b8a6',
+            'Лаймовый': '#84cc16',
+            'Индиго': '#6366f1',
+            'Фуксия': '#d946ef',
+            'Циан': '#06b6d4',
+            'Аметист': '#a855f7'
+        };
+    }
+
+    // Улучшенная палитра для сравнения сотрудников
+    static getComparisonColors() {
+        return {
+            total: 'rgba(59, 130, 246, 0.8)',
+            inProgress: 'rgba(245, 158, 11, 0.8)',
+            successful: 'rgba(16, 185, 129, 0.8)',
+            unsuccessful: 'rgba(239, 68, 68, 0.8)',
+            postponed: 'rgba(107, 114, 128, 0.8)'
+        };
+    }
+
     static initCharts() {
         console.log('📊 Initializing deals charts...');
 
@@ -21,26 +140,44 @@ class DealsManager {
                     labels: [],
                     datasets: [{
                         data: [],
-                        backgroundColor: [
-                            '#4f46e5', '#7c3aed', '#a855f7', '#c026d3', '#db2777',
-                            '#e11d48', '#ea580c', '#d97706', '#65a30d', '#16a34a',
-                            '#059669', '#0d9488', '#0891b2', '#0284c7', '#2563eb',
-                            '#1d4ed8', '#4338ca', '#6b21a8', '#86198f', '#9d174d'
-                        ],
-                        borderWidth: 1
+                        backgroundColor: [],
+                        borderColor: [],
+                        borderWidth: 2,
+                        hoverOffset: 8
                     }]
                 },
                 options: {
                     responsive: true,
                     plugins: {
                         legend: {
-                            position: 'right'
+                            position: 'right',
+                            labels: {
+                                padding: 15,
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }
                         },
                         title: {
                             display: true,
-                            text: 'Распределение сделок по стадиям'
+                            text: 'Распределение сделок по стадиям',
+                            font: {
+                                size: 14,
+                                weight: '600'
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = Math.round((value / total) * 100);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
                         }
-                    }
+                    },
+                    cutout: '50%'
                 }
             });
         }
@@ -53,11 +190,13 @@ class DealsManager {
                 data: {
                     labels: [],
                     datasets: [{
-                        label: 'Сумма сделок (руб)',
+                        label: 'Сумма сделок',
                         data: [],
-                        backgroundColor: 'rgba(54, 162, 235, 0.8)',
-                        borderColor: 'rgba(54, 162, 235, 1)',
-                        borderWidth: 1
+                        backgroundColor: [],
+                        borderColor: [],
+                        borderWidth: 2,
+                        borderRadius: 6,
+                        borderSkipped: false,
                     }]
                 },
                 options: {
@@ -68,7 +207,11 @@ class DealsManager {
                         },
                         title: {
                             display: true,
-                            text: 'Сумма сделок по стадиям'
+                            text: 'Сумма сделок по стадиям',
+                            font: {
+                                size: 14,
+                                weight: '600'
+                            }
                         }
                     },
                     scales: {
@@ -76,8 +219,19 @@ class DealsManager {
                             beginAtZero: true,
                             ticks: {
                                 callback: function (value) {
+                                    if (value >= 1000000) {
+                                        return (value / 1000000).toFixed(1) + 'M ₽';
+                                    } else if (value >= 1000) {
+                                        return (value / 1000).toFixed(0) + 'K ₽';
+                                    }
                                     return value.toLocaleString('ru-RU') + ' ₽';
                                 }
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 0
                             }
                         }
                     }
@@ -96,23 +250,42 @@ class DealsManager {
                         {
                             label: 'Всего сделок',
                             data: [],
-                            backgroundColor: 'rgba(54, 162, 235, 0.8)',
-                            borderColor: 'rgba(54, 162, 235, 1)',
-                            borderWidth: 1
+                            backgroundColor: this.getComparisonColors().total,
+                            borderColor: this.adjustBrightness(this.getComparisonColors().total, -30),
+                            borderWidth: 1,
+                            borderRadius: 4
                         },
                         {
                             label: 'В работе',
                             data: [],
-                            backgroundColor: 'rgba(255, 159, 64, 0.8)',
-                            borderColor: 'rgba(255, 159, 64, 1)',
-                            borderWidth: 1
+                            backgroundColor: this.getComparisonColors().inProgress,
+                            borderColor: this.adjustBrightness(this.getComparisonColors().inProgress, -30),
+                            borderWidth: 1,
+                            borderRadius: 4
                         },
                         {
                             label: 'Успешные',
                             data: [],
-                            backgroundColor: 'rgba(75, 192, 192, 0.8)',
-                            borderColor: 'rgba(75, 192, 192, 1)',
-                            borderWidth: 1
+                            backgroundColor: this.getComparisonColors().successful,
+                            borderColor: this.adjustBrightness(this.getComparisonColors().successful, -30),
+                            borderWidth: 1,
+                            borderRadius: 4
+                        },
+                        {
+                            label: 'Неуспешные',
+                            data: [],
+                            backgroundColor: this.getComparisonColors().unsuccessful,
+                            borderColor: this.adjustBrightness(this.getComparisonColors().unsuccessful, -30),
+                            borderWidth: 1,
+                            borderRadius: 4
+                        },
+                        {
+                            label: 'Отложенные',
+                            data: [],
+                            backgroundColor: this.getComparisonColors().postponed,
+                            borderColor: this.adjustBrightness(this.getComparisonColors().postponed, -30),
+                            borderWidth: 1,
+                            borderRadius: 4
                         }
                     ]
                 },
@@ -121,7 +294,11 @@ class DealsManager {
                     plugins: {
                         title: {
                             display: true,
-                            text: 'Сравнение сотрудников по сделкам'
+                            text: 'Сравнение сотрудников по сделкам',
+                            font: {
+                                size: 14,
+                                weight: '600'
+                            }
                         }
                     },
                     scales: {
@@ -136,6 +313,9 @@ class DealsManager {
                             title: {
                                 display: true,
                                 text: 'Количество сделок'
+                            },
+                            ticks: {
+                                stepSize: 1
                             }
                         }
                     }
@@ -143,7 +323,42 @@ class DealsManager {
             });
         }
 
-        console.log('✅ Deals charts initialized');
+        console.log('✅ Deals charts initialized with unified colors');
+    }
+
+    // Вспомогательная функция для регулировки яркости цвета
+    static adjustBrightness(color, percent) {
+        // Для rgba цветов
+        if (color.startsWith('rgba')) {
+            const matches = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*(\d+(?:\.\d+)?))?\)/);
+            if (matches) {
+                let r = parseInt(matches[1]);
+                let g = parseInt(matches[2]);
+                let b = parseInt(matches[3]);
+                const a = matches[4] ? parseFloat(matches[4]) : 1;
+                
+                const amt = Math.round(2.55 * percent);
+                r = Math.min(255, Math.max(0, r + amt));
+                g = Math.min(255, Math.max(0, g + amt));
+                b = Math.min(255, Math.max(0, b + amt));
+                
+                return `rgba(${r}, ${g}, ${b}, ${a})`;
+            }
+        }
+        
+        // Для hex цветов
+        const num = parseInt(color.replace("#", ""), 16);
+        const amt = Math.round(2.55 * percent);
+        const R = Math.min(255, Math.max(0, (num >> 16) + amt));
+        const G = Math.min(255, Math.max(0, (num >> 8 & 0x00FF) + amt));
+        const B = Math.min(255, Math.max(0, (num & 0x0000FF) + amt));
+        
+        return "#" + (
+            0x1000000 +
+            (R < 255 ? (R < 1 ? 0 : R) : 255) * 0x10000 +
+            (G < 255 ? (G < 1 ? 0 : G) : 255) * 0x100 +
+            (B < 255 ? (B < 1 ? 0 : B) : 255)
+        ).toString(16).slice(1);
     }
 
     static updateCharts(stats) {
@@ -157,7 +372,20 @@ class DealsManager {
             const stagesData = stats.deals_by_stage;
             this.charts.stages.data.labels = stagesData.map(stage => stage.stage_name);
             this.charts.stages.data.datasets[0].data = stagesData.map(stage => stage.count);
+            
+            // Используем универсальную функцию для цветов
+            const backgroundColors = stagesData.map(stage => 
+                this.getStageColor(stage.stage_name)
+            );
+            const borderColors = backgroundColors.map(color => 
+                this.adjustBrightness(color, -20)
+            );
+            
+            this.charts.stages.data.datasets[0].backgroundColor = backgroundColors;
+            this.charts.stages.data.datasets[0].borderColor = borderColors;
+            
             this.charts.stages.update();
+            console.log('✅ Stages chart updated with unified colors');
         }
 
         // Обновляем столбчатую диаграмму
@@ -165,120 +393,24 @@ class DealsManager {
             const stagesData = stats.deals_by_stage;
             this.charts.value.data.labels = stagesData.map(stage => stage.stage_name);
             this.charts.value.data.datasets[0].data = stagesData.map(stage => stage.value);
+            
+            // Используем универсальную функцию для цветов
+            const backgroundColors = stagesData.map(stage => 
+                this.getStageColor(stage.stage_name)
+            );
+            const borderColors = backgroundColors.map(color => 
+                this.adjustBrightness(color, -10)
+            );
+            
+            this.charts.value.data.datasets[0].backgroundColor = backgroundColors;
+            this.charts.value.data.datasets[0].borderColor = borderColors;
+            
             this.charts.value.update();
+            console.log('✅ Value chart updated with unified colors');
         }
 
         // Также обновляем таблицу
         this.updateStagesTable(stats);
-    }
-
-    static updateComparisonChart(deals, userInfoMap) {
-        if (!deals || !userInfoMap || !this.charts.comparison) {
-            console.log('No data for comparison chart');
-            return;
-        }
-
-        // Получаем выбранных пользователей из чекбоксов
-        const selectedUserIds = getSelectedDealsUsers();
-        console.log('Selected users for comparison:', selectedUserIds);
-
-        // Группируем сделки по сотрудникам (только выбранным)
-        const userDeals = {};
-        selectedUserIds.forEach(userId => {
-            userDeals[userId] = {
-                total: 0,
-                inProgress: 0,
-                successful: 0,
-                unsuccessful: 0,
-                postponed: 0
-            };
-        });
-
-        deals.forEach(deal => {
-            const userId = deal.ASSIGNED_BY_ID;
-            if (userDeals[userId]) {
-                userDeals[userId].total++;
-
-                // Определяем стадию
-                const stageName = (deal.STAGE_NAME || '').toLowerCase();
-                if (stageName.includes('выигр') || stageName.includes('успеш') || stageName.includes('заверш') || stageName.includes('продажа')) {
-                    userDeals[userId].successful++;
-                } else if (stageName.includes('проигр') || stageName.includes('отказ') || stageName.includes('нецелев') || stageName.includes('конкурент')) {
-                    userDeals[userId].unsuccessful++;
-                } else if (stageName.includes('отложен') || stageName.includes('недозвон')) {
-                    userDeals[userId].postponed++;
-                } else {
-                    userDeals[userId].inProgress++;
-                }
-            }
-        });
-
-        // Сортируем по количеству сделок
-        const sortedUsers = Object.entries(userDeals)
-            .sort(([, a], [, b]) => b.total - a.total);
-
-        const labels = sortedUsers.map(([userId]) => {
-            const user = userInfoMap[userId];
-            return user ? `${user.NAME} ${user.LAST_NAME}`.trim() : `ID: ${userId}`;
-        });
-
-        const totalData = sortedUsers.map(([, stats]) => stats.total);
-        const inProgressData = sortedUsers.map(([, stats]) => stats.inProgress);
-        const successfulData = sortedUsers.map(([, stats]) => stats.successful);
-        const unsuccessfulData = sortedUsers.map(([, stats]) => stats.unsuccessful);
-        const postponedData = sortedUsers.map(([, stats]) => stats.postponed);
-
-        // Обновляем основной график сравнения
-        this.charts.comparison.data.labels = labels;
-        this.charts.comparison.data.datasets = [
-            {
-                label: 'Всего сделок',
-                data: totalData,
-                backgroundColor: 'rgba(54, 162, 235, 0.8)',
-                borderColor: 'rgba(54, 162, 235, 1)',
-                borderWidth: 1
-            },
-            {
-                label: 'В работе',
-                data: inProgressData,
-                backgroundColor: 'rgba(255, 206, 86, 0.8)',
-                borderColor: 'rgba(255, 206, 86, 1)',
-                borderWidth: 1
-            },
-            {
-                label: 'Успешные',
-                data: successfulData,
-                backgroundColor: 'rgba(75, 192, 192, 0.8)',
-                borderColor: 'rgba(75, 192, 192, 1)',
-                borderWidth: 1
-            },
-            {
-                label: 'Неуспешные',
-                data: unsuccessfulData,
-                backgroundColor: 'rgba(255, 99, 132, 0.8)',
-                borderColor: 'rgba(255, 99, 132, 1)',
-                borderWidth: 1
-            },
-            {
-                label: 'Отложенные',
-                data: postponedData,
-                backgroundColor: 'rgba(153, 102, 255, 0.8)',
-                borderColor: 'rgba(153, 102, 255, 1)',
-                borderWidth: 1
-            }
-        ];
-
-        this.charts.comparison.update();
-
-        // Показываем контейнер
-        const comparisonContainer = document.getElementById('dealsComparisonChartContainer');
-        if (comparisonContainer && sortedUsers.length > 1) {
-            comparisonContainer.style.display = 'block';
-        } else if (comparisonContainer) {
-            comparisonContainer.style.display = 'none';
-        }
-
-        console.log('✅ Comparison chart updated with', sortedUsers.length, 'users');
     }
 
     static updateStagesTable(stats) {
@@ -316,7 +448,8 @@ class DealsManager {
             row.onmouseenter = () => row.style.backgroundColor = '#f8f9fa';
             row.onmouseleave = () => row.style.backgroundColor = '';
 
-            const stageColor = this.getEnhancedStageColor(stage.stage_name, stage.stage_color);
+            // Используем универсальную функцию для цвета
+            const stageColor = this.getStageColor(stage.stage_name);
 
             row.innerHTML = `
             <td style="padding: 12px;">
@@ -397,39 +530,6 @@ class DealsManager {
         }
 
         console.log('✅ Stages table created dynamically');
-    }
-
-    static getEnhancedStageColor(stageName, originalColor) {
-        if (!stageName) return originalColor || '#cccccc';
-
-        const name = stageName.toLowerCase();
-
-        if (name.includes('проигр') || name.includes('lost') || name.includes('отказ')) {
-            if (name.includes('нереал') || name.includes('не реал')) return '#dc2626';
-            if (name.includes('отмен')) return '#ef4444';
-            return '#f87171';
-        }
-
-        if (name.includes('выигр') || name.includes('won') || name.includes('успеш') || name.includes('заверш')) {
-            return '#059669';
-        }
-
-        if (name.includes('обработ') || name.includes('в работе') || name.includes('взято') ||
-            name.includes('кп') || name.includes('коммерч') || name.includes('подготов') ||
-            name.includes('negotiation') || name.includes('processing')) {
-            return '#ea580c';
-        }
-
-        if (name.includes('нов') || name.includes('первич') || name.includes('инициир') ||
-            name.includes('new') || name.includes('initial') || name.includes('lead')) {
-            return '#2563eb';
-        }
-
-        if (name.includes('архив') || name.includes('не опред') || name.includes('unknown')) {
-            return '#6b7280';
-        }
-
-        return originalColor || '#6366f1';
     }
 
     static updateSummaryCards(stats) {
@@ -520,7 +620,8 @@ class DealsManager {
                 console.error('Error parsing dates:', e);
             }
 
-            const stageColor = this.getEnhancedStageColor(deal.STAGE_NAME, deal.STAGE_COLOR);
+            // Используем универсальную функцию для цвета
+            const stageColor = this.getStageColor(deal.STAGE_NAME);
             const stageBadge = `<span class="stage-badge" style="background-color: ${stageColor}">${deal.STAGE_NAME || 'Неизвестно'}</span>`;
 
             const amount = parseFloat(deal.OPPORTUNITY || 0).toLocaleString('ru-RU') + ' ₽';
@@ -533,10 +634,10 @@ class DealsManager {
             if (stageName.includes('продажа') || stageName.includes('успеш') || stageName.includes('выигр')) {
                 status = '✅ Успешная';
                 statusColor = '#059669';
-            } else if (stageName.includes('отказ') || stageName.includes('конкурент') || stageName.includes('нецелев') || stageName.includes('ликвидац')) {
+            } else if (stageName.includes('отказ') || stageName.includes('конкурент') || stageName.includes('нецелев') || stageName.includes('ликвидац') || stageName.includes('выбрали конкурента')) {
                 status = '❌ Неуспешная';
                 statusColor = '#dc2626';
-            } else if (stageName.includes('отложен') || stageName.includes('недозвон')) {
+            } else if (stageName.includes('отложен') || stageName.includes('недозвон') || stageName.includes('отложенное решение')) {
                 status = '⏸️ Отложена';
                 statusColor = '#6b7280';
             } else {
@@ -697,8 +798,125 @@ class DealsManager {
             deals_by_stage: dealsByStage
         };
     }
+
+    static updateComparisonChart(deals, userInfoMap) {
+        if (!deals || !userInfoMap || !this.charts.comparison) {
+            console.log('No data for comparison chart');
+            return;
+        }
+
+        const compColors = this.getComparisonColors();
+
+        // Получаем выбранных пользователей из чекбоксов
+        const selectedUserIds = getSelectedDealsUsers();
+        console.log('Selected users for comparison:', selectedUserIds);
+
+        // Группируем сделки по сотрудникам (только выбранным)
+        const userDeals = {};
+        selectedUserIds.forEach(userId => {
+            userDeals[userId] = {
+                total: 0,
+                inProgress: 0,
+                successful: 0,
+                unsuccessful: 0,
+                postponed: 0
+            };
+        });
+
+        deals.forEach(deal => {
+            const userId = deal.ASSIGNED_BY_ID;
+            if (userDeals[userId]) {
+                userDeals[userId].total++;
+
+                // Определяем стадию
+                const stageName = (deal.STAGE_NAME || '').toLowerCase();
+                if (stageName.includes('выигр') || stageName.includes('успеш') || stageName.includes('заверш') || stageName.includes('продажа')) {
+                    userDeals[userId].successful++;
+                } else if (stageName.includes('проигр') || stageName.includes('отказ') || stageName.includes('нецелев') || stageName.includes('конкурент') || stageName.includes('выбрали конкурента')) {
+                    userDeals[userId].unsuccessful++;
+                } else if (stageName.includes('отложен') || stageName.includes('недозвон') || stageName.includes('отложенное решение')) {
+                    userDeals[userId].postponed++;
+                } else {
+                    userDeals[userId].inProgress++;
+                }
+            }
+        });
+
+        // Сортируем по количеству сделок
+        const sortedUsers = Object.entries(userDeals)
+            .sort(([, a], [, b]) => b.total - a.total);
+
+        const labels = sortedUsers.map(([userId]) => {
+            const user = userInfoMap[userId];
+            return user ? `${user.NAME} ${user.LAST_NAME}`.trim() : `ID: ${userId}`;
+        });
+
+        const totalData = sortedUsers.map(([, stats]) => stats.total);
+        const inProgressData = sortedUsers.map(([, stats]) => stats.inProgress);
+        const successfulData = sortedUsers.map(([, stats]) => stats.successful);
+        const unsuccessfulData = sortedUsers.map(([, stats]) => stats.unsuccessful);
+        const postponedData = sortedUsers.map(([, stats]) => stats.postponed);
+
+        // Обновляем основной график сравнения
+        this.charts.comparison.data.labels = labels;
+        this.charts.comparison.data.datasets = [
+            {
+                label: 'Всего сделок',
+                data: totalData,
+                backgroundColor: compColors.total,
+                borderColor: this.adjustBrightness(compColors.total, -30),
+                borderWidth: 1,
+                borderRadius: 4
+            },
+            {
+                label: 'В работе',
+                data: inProgressData,
+                backgroundColor: compColors.inProgress,
+                borderColor: this.adjustBrightness(compColors.inProgress, -30),
+                borderWidth: 1,
+                borderRadius: 4
+            },
+            {
+                label: 'Успешные',
+                data: successfulData,
+                backgroundColor: compColors.successful,
+                borderColor: this.adjustBrightness(compColors.successful, -30),
+                borderWidth: 1,
+                borderRadius: 4
+            },
+            {
+                label: 'Неуспешные',
+                data: unsuccessfulData,
+                backgroundColor: compColors.unsuccessful,
+                borderColor: this.adjustBrightness(compColors.unsuccessful, -30),
+                borderWidth: 1,
+                borderRadius: 4
+            },
+            {
+                label: 'Отложенные',
+                data: postponedData,
+                backgroundColor: compColors.postponed,
+                borderColor: this.adjustBrightness(compColors.postponed, -30),
+                borderWidth: 1,
+                borderRadius: 4
+            }
+        ];
+
+        this.charts.comparison.update();
+
+        // Показываем контейнер
+        const comparisonContainer = document.getElementById('dealsComparisonChartContainer');
+        if (comparisonContainer && sortedUsers.length > 1) {
+            comparisonContainer.style.display = 'block';
+        } else if (comparisonContainer) {
+            comparisonContainer.style.display = 'none';
+        }
+
+        console.log('✅ Comparison chart updated with', sortedUsers.length, 'users');
+    }
 }
 
+// Остальные функции остаются без изменений...
 async function testDealsConnection() {
     showLoading('Тестирование подключения к сделкам...');
 
@@ -809,8 +1027,8 @@ async function loadDealsData() {
             } catch (statsError) {
                 console.warn('⚠️ Stats error, using frontend calculation:', statsError);
                 const calculatedStats = DealsManager.calculateStatsFromDeals(dealsResponse.deals);
-                DealsManager.updateSummaryCards(calculatedStats);
-                DealsManager.updateCharts(calculatedStats);
+                    DealsManager.updateSummaryCards(calculatedStats);
+                    DealsManager.updateCharts(calculatedStats);
             }
 
             showNotification(`✅ Загружено ${dealsResponse.count} сделок за период`, 'success');
