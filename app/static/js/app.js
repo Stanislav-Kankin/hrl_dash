@@ -273,11 +273,11 @@ async function loadData() {
 
         // 🔥 АДАПТИВНЫЕ ТАЙМАУТЫ ДЛЯ БОЛЬШИХ ПЕРИОДОВ
         const getTimeout = () => {
-            if (daysDiff <= 1) return 30000; // 30 сек для 1 дня
-            if (daysDiff <= 7) return 45000; // 45 сек для недели
-            if (daysDiff <= 30) return 60000; // 60 сек для месяца
-            if (daysDiff <= 90) return 120000; // 2 минуты для квартала
-            return 180000; // 3 минуты для больших периодов
+            if (daysDiff <= 1) return 90000000;
+            if (daysDiff <= 7) return 90000000;
+            if (daysDiff <= 30) return 90000000;
+            if (daysDiff <= 90) return 90000000;
+            return 90000000;
         };
 
         const timeoutMs = getTimeout();
@@ -1054,7 +1054,7 @@ async function loadDataFromBitrix() {
 
         if (daysDiff > 30) {
             const useProgressive = confirm(`📅 Выбран большой период (${daysDiff} дней). Рекомендуется использовать прогрессивную загрузку для стабильности. Использовать прогрессивную загрузку?`);
-            
+
             if (useProgressive) {
                 await loadProgressiveData(startDate, endDate, selectedUsers);
                 return;
