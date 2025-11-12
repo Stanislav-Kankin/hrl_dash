@@ -359,7 +359,7 @@ async function loadData() {
 
 // 🔧 Функция fetch с таймаутом
 function fetchWithTimeout(url, options = {}) {
-    const { timeout = 30000, ...fetchOptions } = options;
+    const { timeout = 90000000, ...fetchOptions } = options;
 
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
