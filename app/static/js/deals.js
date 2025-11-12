@@ -466,8 +466,9 @@ class DealsManager {
             return;
         }
 
-        console.log('Displaying deals table:', deals ? deals.length : 0, 'deals');
-        console.log('Selected users in table:', Object.keys(userInfoMap).length);
+        console.log('📊 Displaying deals table:', deals ? deals.length : 0, 'deals');
+        console.log('👥 Available users in userInfoMap:', Object.keys(userInfoMap).length);
+        console.log('🔍 First few deals:', deals ? deals.slice(0, 3) : 'no deals');
 
         if (!deals || deals.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="loading">Нет данных о сделках</td></tr>';
@@ -485,124 +486,97 @@ class DealsManager {
 
         tbody.innerHTML = '';
 
-        // 🔥 ГРУППИРУЕМ СДЕЛКИ ПО СОТРУДНИКАМ ДЛЯ УДОБСТВА
-        const dealsByUser = {};
+        // 🔥 ДЕБАГ: Проверим какие сотрудники действительно есть в данных
+        const usersInData = {};
         pageDeals.forEach(deal => {
             const userId = deal.ASSIGNED_BY_ID;
-            if (!dealsByUser[userId]) {
-                dealsByUser[userId] = [];
-            }
-            dealsByUser[userId].push(deal);
+            usersInData[userId] = (usersInData[userId] || 0) + 1;
         });
+        console.log('👥 Users found in deals data:', usersInData);
 
-        let rowIndex = startIndex;
+        // 🔥 ПРОСТОЙ ВЫВОД БЕЗ ГРУППИРОВКИ - чтобы убедиться что данные есть
+        pageDeals.forEach((deal, index) => {
+            const row = document.createElement('tr');
+            const globalIndex = startIndex + index + 1;
 
-        // 🔥 ПОКАЗЫВАЕМ СДЕЛКИ С ГРУППИРОВКОЙ ПО СОТРУДНИКАМ
-        Object.entries(dealsByUser).forEach(([userId, userDeals]) => {
-            const userInfo = userInfoMap[userId];
+            const userInfo = userInfoMap[deal.ASSIGNED_BY_ID];
             const userName = userInfo ?
                 `${userInfo.NAME || ''} ${userInfo.LAST_NAME || ''}`.trim() :
-                `ID: ${userId}`;
+                `ID: ${deal.ASSIGNED_BY_ID}`;
 
-            // 🔥 ЗАГОЛОВОК ГРУППЫ - СОТРУДНИК
-            const groupHeader = document.createElement('tr');
-            groupHeader.style.background = 'linear-gradient(135deg, #667eea, #764ba2)';
-            groupHeader.style.color = 'white';
-            groupHeader.innerHTML = `
-            <td colspan="8" style="padding: 12px; font-weight: bold; font-size: 1.1em;">
-                👤 ${userName} - ${userDeals.length} сделок
+            let createdDate = 'Нет данных';
+            let modifiedDate = 'Нет данных';
+
+            try {
+                if (deal.DATE_CREATE) {
+                    const created = new Date(deal.DATE_CREATE.replace('Z', '+00:00'));
+                    createdDate = created.toLocaleDateString('ru-RU');
+                }
+                if (deal.DATE_MODIFY) {
+                    const modified = new Date(deal.DATE_MODIFY.replace('Z', '+00:00'));
+                    modifiedDate = modified.toLocaleDateString('ru-RU');
+                }
+            } catch (e) {
+                console.error('Error parsing dates:', e);
+            }
+
+            const stageColor = this.getEnhancedStageColor(deal.STAGE_NAME, deal.STAGE_COLOR);
+            const stageBadge = `<span class="stage-badge" style="background-color: ${stageColor}">${deal.STAGE_NAME || 'Неизвестно'}</span>`;
+
+            const amount = parseFloat(deal.OPPORTUNITY || 0).toLocaleString('ru-RU') + ' ₽';
+
+            // 🔥 ПРОСТАЯ ЛОГИКА СТАТУСОВ
+            const stageName = (deal.STAGE_NAME || '').toLowerCase();
+            let status = '';
+            let statusColor = '';
+
+            if (stageName.includes('продажа') || stageName.includes('успеш') || stageName.includes('выигр')) {
+                status = '✅ Успешная';
+                statusColor = '#059669';
+            } else if (stageName.includes('отказ') || stageName.includes('конкурент') || stageName.includes('нецелев') || stageName.includes('ликвидац')) {
+                status = '❌ Неуспешная';
+                statusColor = '#dc2626';
+            } else if (stageName.includes('отложен') || stageName.includes('недозвон')) {
+                status = '⏸️ Отложена';
+                statusColor = '#6b7280';
+            } else {
+                status = '🟡 В работе';
+                statusColor = '#d97706';
+            }
+
+            row.innerHTML = `
+            <td style="padding: 10px;">
+                <div style="font-weight: 600; margin-bottom: 4px;">
+                    ${deal.TITLE || 'Без названия'}
+                </div>
+                <div style="font-size: 0.8em; color: #6b7280;">
+                    ID: ${deal.ID} | #${globalIndex}
+                </div>
             </td>
+            <td style="padding: 10px;">
+                <div style="font-weight: 600; color: #667eea;">${userName}</div>
+                <div style="font-size: 0.8em; color: #6b7280;">
+                    ID: ${deal.ASSIGNED_BY_ID}
+                </div>
+            </td>
+            <td style="padding: 10px;">${stageBadge}</td>
+            <td style="padding: 10px; text-align: right; font-weight: 600;">${amount}</td>
+            <td style="padding: 10px;">${createdDate}</td>
+            <td style="padding: 10px;">${modifiedDate}</td>
+            <td style="padding: 10px;">
+                <div style="font-size: 0.9em;">
+                    <div>${createdDate}</div>
+                </div>
+            </td>
+            <td style="padding: 10px; color: ${statusColor}; font-weight: 600;">${status}</td>
         `;
-            tbody.appendChild(groupHeader);
 
-            // 🔥 СДЕЛКИ ЭТОГО СОТРУДНИКА
-            userDeals.forEach((deal, userDealIndex) => {
-                const row = document.createElement('tr');
-                row.style.borderBottom = '1px solid #e9ecef';
+            // 🔥 ПОДСВЕТКА РАЗНЫХ СОТРУДНИКОВ
+            if (index % 2 === 0) {
+                row.style.background = '#f8f9fa';
+            }
 
-                if (userDealIndex % 2 === 0) {
-                    row.style.background = '#f8f9fa';
-                }
-
-                const globalIndex = rowIndex + 1;
-
-                let createdDate = 'Нет данных';
-                let modifiedDate = 'Нет данных';
-
-                try {
-                    if (deal.DATE_CREATE) {
-                        const created = new Date(deal.DATE_CREATE.replace('Z', '+00:00'));
-                        createdDate = created.toLocaleDateString('ru-RU');
-                    }
-                    if (deal.DATE_MODIFY) {
-                        const modified = new Date(deal.DATE_MODIFY.replace('Z', '+00:00'));
-                        modifiedDate = modified.toLocaleDateString('ru-RU');
-                    }
-                } catch (e) {
-                    console.error('Error parsing dates:', e);
-                }
-
-                const stageColor = this.getEnhancedStageColor(deal.STAGE_NAME, deal.STAGE_COLOR);
-                const stageBadge = `<span class="stage-badge" style="background-color: ${stageColor}">${deal.STAGE_NAME || 'Неизвестно'}</span>`;
-
-                const amount = parseFloat(deal.OPPORTUNITY || 0).toLocaleString('ru-RU') + ' ₽';
-
-                // Определяем статус сделки
-                const stageName = (deal.STAGE_NAME || '').toLowerCase();
-                let status = '';
-                let statusColor = '';
-
-                if (stageName.includes('выигр') || stageName.includes('успеш') || stageName.includes('заверш') || stageName.includes('продажа')) {
-                    status = '✅ Успешная';
-                    statusColor = '#059669';
-                } else if (stageName.includes('проигр') || stageName.includes('отказ') || stageName.includes('нецелев') || stageName.includes('конкурент')) {
-                    status = '❌ Неуспешная';
-                    statusColor = '#dc2626';
-                } else if (stageName.includes('отложен') || stageName.includes('недозвон')) {
-                    status = '⏸️ Отложена';
-                    statusColor = '#6b7280';
-                } else {
-                    status = '🟡 В работе';
-                    statusColor = '#d97706';
-                }
-
-                row.innerHTML = `
-                <td style="padding: 10px;">
-                    <div style="font-weight: 600; margin-bottom: 4px;">
-                        ${deal.TITLE || 'Без названия'}
-                    </div>
-                    <div style="font-size: 0.8em; color: #6b7280;">
-                        ID: ${deal.ID} | #${globalIndex}
-                    </div>
-                </td>
-                <td style="padding: 10px;">
-                    <div style="font-weight: 600; color: #667eea;">${userName}</div>
-                    <div style="font-size: 0.8em; color: #6b7280;">
-                        ID: ${userId}
-                    </div>
-                </td>
-                <td style="padding: 10px;">${stageBadge}</td>
-                <td style="padding: 10px; text-align: right; font-weight: 600;">${amount}</td>
-                <td style="padding: 10px;">${createdDate}</td>
-                <td style="padding: 10px;">${modifiedDate}</td>
-                <td style="padding: 10px;">
-                    <div style="font-size: 0.9em;">
-                        <div>${createdDate}</div>
-                        <div style="font-size: 0.8em; color: #6b7280;">
-                            создана
-                        </div>
-                    </div>
-                </td>
-                <td style="padding: 10px; color: ${statusColor}; font-weight: 600;">${status}</td>
-            `;
-                tbody.appendChild(row);
-                rowIndex++;
-            });
-
-            // 🔥 РАЗДЕЛИТЕЛЬ МЕЖДУ ГРУППАМИ
-            const separator = document.createElement('tr');
-            separator.innerHTML = '<td colspan="8" style="padding: 8px; background: #e9ecef;"></td>';
-            tbody.appendChild(separator);
+            tbody.appendChild(row);
         });
 
         if (showPagination) {
@@ -612,7 +586,7 @@ class DealsManager {
         // Обновляем график сравнения
         this.updateComparisonChart(deals, userInfoMap);
 
-        console.log('✅ Deals table updated with grouped display');
+        console.log('✅ Deals table updated - simple display');
     }
 
     static updatePagination(totalDeals, totalPages) {
