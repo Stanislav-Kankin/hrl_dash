@@ -80,7 +80,7 @@ async def get_main_stats(
     user_ids: str = None,
     activity_type: str = None,
     include_statistics: bool = True,
-    force_refresh: bool = False,  # 🔥 НОВЫЙ ПАРАМЕТР
+    force_refresh: bool = False,
     current_user: dict = Depends(get_current_user)
 ):
     try:
@@ -88,6 +88,9 @@ async def get_main_stats(
         start = datetime.fromisoformat(start_date)
         end = datetime.fromisoformat(end_date)
         total_days = (end - start).days + 1
+        
+        # 🔥 ДЛЯ БОЛЬШИХ ПЕРИОДОВ ИСПОЛЬЗУЕМ ОПТИМИЗИРОВАННЫЙ МЕТОД
+        use_optimized = total_days > 14 and not force_refresh
         
         if total_days > 30 and force_refresh:
             return {
@@ -104,7 +107,7 @@ async def get_main_stats(
         user_info_map = {str(u['ID']): u for u in presales_users}
         target_user_ids = user_ids_list if user_ids_list else list(user_info_map.keys())
 
-        logger.info(f"🔍 Main stats: {start_date} to {end_date}, users: {len(target_user_ids)}, force_refresh: {force_refresh}")
+        logger.info(f"🔍 Main stats: {start_date} to {end_date}, users: {len(target_user_ids)}, days: {total_days}, optimized: {use_optimized}")
 
         cache_used = False
         activities = []
@@ -131,12 +134,23 @@ async def get_main_stats(
             else:
                 logger.info(f"🔄 No complete cache found ({completeness:.1f}%), loading from Bitrix...")
             
-            activities = await bitrix_service.get_activities(
-                start_date=start_date,
-                end_date=end_date,
-                user_ids=target_user_ids,
-                activity_types=activity_types
-            )
+            # 🔥 ВЫБИРАЕМ МЕТОД В ЗАВИСИМОСТИ ОТ ПЕРИОДА
+            if use_optimized:
+                logger.info(f"📅 Using OPTIMIZED loading for {total_days} days")
+                activities = await bitrix_service.get_activities_optimized(
+                    start_date=start_date,
+                    end_date=end_date,
+                    user_ids=target_user_ids,
+                    activity_types=activity_types,
+                    chunk_size_days=7  # Недельные chunks
+                )
+            else:
+                activities = await bitrix_service.get_activities(
+                    start_date=start_date,
+                    end_date=end_date,
+                    user_ids=target_user_ids,
+                    activity_types=activity_types
+                )
             
             if activities:
                 asyncio.create_task(warehouse_service.cache_activities(activities))
@@ -222,7 +236,8 @@ async def get_main_stats(
             "cache_completeness": completeness,
             "activities_count": len(activities),
             "start_date": start_date,
-            "end_date": end_date
+            "end_date": end_date,
+            "optimized_loading": use_optimized  # 🔥 Добавляем информацию о методе загрузки
         }
 
         if include_statistics:
@@ -917,35 +932,6 @@ async def get_deals_stages(current_user: dict = Depends(get_current_user)):
         return {"success": False, "error": str(e)}
 
 
-@app.get("/api/deals/user-all")
-async def get_user_all_deals(
-    user_ids: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """Получение ВСЕХ сделок сотрудников (без ограничения даты)"""
-    try:
-        user_ids_list = user_ids.split(',')
-        logger.info(f"🔍 GET /api/deals/user-all for users: {user_ids_list}")
-        
-        # 🔥 БЕЗ ФИЛЬТРА ПО ДАТЕ - все сделки сотрудников
-        deals = await bitrix_service.get_deals(
-            user_ids=user_ids_list,
-            limit=500  # Лимит на все сделки
-        )
-        
-        logger.info(f"✅ GET /api/deals/user-all returning {len(deals) if deals else 0} deals")
-        
-        return {
-            "success": True,
-            "deals": deals,
-            "count": len(deals) if deals else 0,
-            "users": user_ids_list
-        }
-    except Exception as e:
-        logger.error(f"❌ Error in get_user_all_deals: {str(e)}")
-        return {"success": False, "error": str(e)}
-
-
 @app.get("/api/deals/debug-stages")
 async def debug_deal_stages(current_user: dict = Depends(get_current_user)):
     """Отладочный эндпоинт для проверки стадий сделок"""
@@ -980,30 +966,63 @@ async def get_deals_list(
     start_date: str = None,
     end_date: str = None,
     user_ids: str = None,
-    limit: int = None,  # 🔥 ДОБАВЛЕН ПАРАМЕТР
+    limit: int = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Получение списка сделок С ЛИМИТОМ"""
+    """Получение списка сделок БЕЗ ЖЕСТКИХ ОГРАНИЧЕНИЙ"""
     try:
         logger.info(f"🔍 GET /api/deals/list called with: start_date={start_date}, end_date={end_date}, user_ids={user_ids}, limit={limit}")
         
         user_ids_list = user_ids.split(',') if user_ids else []
+        
+        # 🔥 ВАЖНО: Вызываем правильный метод БЕЗ ЛИМИТОВ
         deals = await bitrix_service.get_deals(
             start_date=start_date,
             end_date=end_date,
             user_ids=user_ids_list,
-            limit=limit  # 🔥 ПЕРЕДАЕМ ЛИМИТ
+            limit=limit  # limit теперь опциональный
         )
         
         logger.info(f"✅ GET /api/deals/list returning {len(deals) if deals else 0} deals")
         
         return {
             "success": True,
-            "deals": deals,
-            "count": len(deals) if deals else 0
+            "deals": deals or [],  # 🔥 Убедимся что всегда возвращаем список
+            "count": len(deals) if deals else 0,
+            "note": "Загружены все сделки без ограничений" if not limit else f"Загружено с лимитом {limit}"
         }
     except Exception as e:
         logger.error(f"❌ Error in get_deals_list: {str(e)}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/deals/user-all")
+async def get_user_all_deals(
+    user_ids: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Получение ВСЕХ сделок сотрудников (без ограничения даты и лимита)"""
+    try:
+        user_ids_list = user_ids.split(',')
+        logger.info(f"🔍 GET /api/deals/user-all for users: {user_ids_list}")
+        
+        # 🔥 БЕЗ ФИЛЬТРА ПО ДАТЕ И БЕЗ ЛИМИТА - все сделки сотрудников
+        deals = await bitrix_service.get_deals(
+            user_ids=user_ids_list
+            # limit параметр убран - загружаем ВСЕ
+        )
+        
+        logger.info(f"✅ GET /api/deals/user-all returning {len(deals) if deals else 0} deals")
+        
+        return {
+            "success": True,
+            "deals": deals,
+            "count": len(deals) if deals else 0,
+            "users": user_ids_list,
+            "note": "Загружены все сделки без ограничений"
+        }
+    except Exception as e:
+        logger.error(f"❌ Error in get_user_all_deals: {str(e)}")
         return {"success": False, "error": str(e)}
 
 
@@ -1175,6 +1194,206 @@ async def load_progressive(
 
     except Exception as e:
         logger.error(f"Error in progressive load: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/deals/enhanced-stats")
+async def get_enhanced_deals_stats(
+    start_date: str = None,
+    end_date: str = None,
+    user_ids: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Получение улучшенной статистики по сделкам"""
+    try:
+        logger.info(f"🔍 GET /api/deals/enhanced-stats called")
+        
+        user_ids_list = user_ids.split(',') if user_ids else []
+        stats = await bitrix_service.get_deals_statistics_enhanced(
+            start_date=start_date,
+            end_date=end_date,
+            user_ids=user_ids_list
+        )
+        
+        logger.info(f"✅ GET /api/deals/enhanced-stats returning stats")
+        
+        return {
+            "success": True,
+            "stats": stats
+        }
+    except Exception as e:
+        logger.error(f"❌ Error in get_enhanced_deals_stats: {str(e)}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/deals/{deal_id}/stage-history")
+async def get_deal_stage_history(
+    deal_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Получение истории изменения стадий сделки"""
+    try:
+        history = await bitrix_service.get_deal_stage_history(deal_id)
+        return {
+            "success": True,
+            "deal_id": deal_id,
+            "stage_history": history or []
+        }
+    except Exception as e:
+        logger.error(f"❌ Error getting stage history: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/debug/test-deals")
+async def debug_test_deals(
+    start_date: str = None,
+    end_date: str = None,
+    user_ids: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Тестовый endpoint для проверки работы со сделками"""
+    try:
+        user_ids_list = user_ids.split(',') if user_ids else []
+        
+        logger.info("🔧 Testing deals loading...")
+        
+        # Тест 1: Получение сделок
+        deals = await bitrix_service.get_deals(
+            start_date=start_date,
+            end_date=end_date,
+            user_ids=user_ids_list,
+            limit=10
+        )
+        
+        # Тест 2: Получение стадий
+        stages = await bitrix_service.get_deal_stages()
+        
+        return {
+            "success": True,
+            "deals_count": len(deals) if deals else 0,
+            "stages_count": len(stages) if stages else 0,
+            "sample_deals": deals[:3] if deals else [],
+            "sample_stages": stages[:5] if stages else []
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Debug test error: {str(e)}")
+        return {"success": False, "error": str(e)}
+    
+# main.py - добавляем подробный отладочный endpoint
+@app.get("/api/debug/deals-detailed")
+async def debug_deals_detailed(
+    start_date: str = None,
+    end_date: str = None,
+    user_ids: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Детальный отладочный endpoint для проверки работы со сделками"""
+    try:
+        user_ids_list = user_ids.split(',') if user_ids else []
+        
+        logger.info("🔧 DETAILED DEBUG: Testing deals loading...")
+        
+        # Тест 1: Проверка сервиса
+        logger.info("🔧 Step 1: Checking bitrix_service...")
+        service_ok = bitrix_service is not None
+        webhook_ok = bitrix_service.webhook_url is not None
+        
+        # Тест 2: Получение сделок
+        logger.info("🔧 Step 2: Getting deals...")
+        deals = await bitrix_service.get_deals(
+            start_date=start_date,
+            end_date=end_date,
+            user_ids=user_ids_list,
+            limit=5
+        )
+        
+        # Тест 3: Получение стадий
+        logger.info("🔧 Step 3: Getting stages...")
+        stages = await bitrix_service.get_deal_stages()
+        
+        # Тест 4: Статистика
+        logger.info("🔧 Step 4: Getting statistics...")
+        stats = await bitrix_service.get_deals_statistics_enhanced(
+            start_date=start_date,
+            end_date=end_date,
+            user_ids=user_ids_list
+        )
+        
+        return {
+            "success": True,
+            "service_status": {
+                "service_exists": service_ok,
+                "webhook_configured": webhook_ok,
+                "webhook_url": bitrix_service.webhook_url[:50] + "..." if bitrix_service.webhook_url else None
+            },
+            "deals_count": len(deals) if deals else 0,
+            "stages_count": len(stages) if stages else 0,
+            "stats_available": stats is not None,
+            "sample_deals": deals[:2] if deals else [],
+            "sample_stages": stages[:3] if stages else [],
+            "stats_summary": {
+                "total_deals": stats.get('total_deals', 0) if stats else 0,
+                "stages_count": len(stats.get('deals_by_stage', [])) if stats else 0
+            } if stats else None
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Detailed debug error: {str(e)}", exc_info=True)
+        return {
+            "success": False, 
+            "error": str(e),
+            "error_type": type(e).__name__
+        }
+
+# main.py - добавляем endpoint для сделок с временем взятия в работу
+@app.get("/api/deals/with-timing")
+async def get_deals_with_timing(
+    user_ids: str = None,
+    limit: int = 100,
+    current_user: dict = Depends(get_current_user)
+):
+    """Получение сделок с информацией о времени взятия в работу"""
+    try:
+        user_ids_list = user_ids.split(',') if user_ids else []
+        
+        logger.info(f"⏱️ Getting deals with timing for users: {user_ids_list}")
+        
+        deals = await bitrix_service.get_deals_with_timing(
+            user_ids=user_ids_list,
+            limit=limit
+        )
+        
+        return {
+            "success": True,
+            "deals": deals or [],
+            "count": len(deals) if deals else 0
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error getting deals with timing: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/deals/responsible-changes")
+async def get_deals_with_responsible_changes(
+    user_ids: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Получение сделок со сменой ответственного"""
+    try:
+        user_ids_list = user_ids.split(',') if user_ids else []
+        
+        deals = await bitrix_service.get_deals_with_responsible_changes(user_ids_list)
+        
+        return {
+            "success": True,
+            "deals": deals or [],
+            "count": len(deals) if deals else 0
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error getting deals with responsible changes: {str(e)}")
         return {"success": False, "error": str(e)}
 
 

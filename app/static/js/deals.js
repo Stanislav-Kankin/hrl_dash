@@ -5,7 +5,9 @@ class DealsManager {
     static currentDealsData = null;
     static currentPage = 1;
     static pageSize = 50;
+    static totalPages = 1;
     static currentView = 'period'; // 'period' или 'all'
+    static currentUserInfoMap = null;
 
     static initCharts() {
         console.log('📊 Initializing deals charts...');
@@ -19,7 +21,12 @@ class DealsManager {
                     labels: [],
                     datasets: [{
                         data: [],
-                        backgroundColor: [],
+                        backgroundColor: [
+                            '#4f46e5', '#7c3aed', '#a855f7', '#c026d3', '#db2777',
+                            '#e11d48', '#ea580c', '#d97706', '#65a30d', '#16a34a',
+                            '#059669', '#0d9488', '#0891b2', '#0284c7', '#2563eb',
+                            '#1d4ed8', '#4338ca', '#6b21a8', '#86198f', '#9d174d'
+                        ],
                         borderWidth: 1
                     }]
                 },
@@ -27,7 +34,7 @@ class DealsManager {
                     responsive: true,
                     plugins: {
                         legend: {
-                            position: 'bottom'
+                            position: 'right'
                         },
                         title: {
                             display: true,
@@ -46,7 +53,7 @@ class DealsManager {
                 data: {
                     labels: [],
                     datasets: [{
-                        label: 'Сумма сделок',
+                        label: 'Сумма сделок (руб)',
                         data: [],
                         backgroundColor: 'rgba(54, 162, 235, 0.8)',
                         borderColor: 'rgba(54, 162, 235, 1)',
@@ -67,9 +74,10 @@ class DealsManager {
                     scales: {
                         y: {
                             beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Сумма (руб)'
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString('ru-RU') + ' ₽';
+                                }
                             }
                         }
                     }
@@ -86,24 +94,175 @@ class DealsManager {
             return;
         }
 
-        const stagesData = stats.deals_by_stage;
-        console.log('Updating charts with stages data:', stagesData);
-
         // Обновляем круговую диаграмму
         if (this.charts.stages) {
+            const stagesData = stats.deals_by_stage;
             this.charts.stages.data.labels = stagesData.map(stage => stage.stage_name);
             this.charts.stages.data.datasets[0].data = stagesData.map(stage => stage.count);
-            this.charts.stages.data.datasets[0].backgroundColor = stagesData.map(stage => stage.stage_color || '#cccccc');
             this.charts.stages.update();
         }
 
         // Обновляем столбчатую диаграмму
         if (this.charts.value) {
+            const stagesData = stats.deals_by_stage;
             this.charts.value.data.labels = stagesData.map(stage => stage.stage_name);
             this.charts.value.data.datasets[0].data = stagesData.map(stage => stage.value);
-            this.charts.value.data.datasets[0].backgroundColor = stagesData.map(stage => stage.stage_color || '#cccccc');
             this.charts.value.update();
         }
+
+        // Также обновляем таблицу
+        this.updateStagesTable(stats);
+    }
+
+    static updateStagesTable(stats) {
+        if (!stats || !stats.deals_by_stage) {
+            console.log('No stats data for stages table:', stats);
+            return;
+        }
+
+        const stagesData = stats.deals_by_stage;
+        const totalValue = stats.total_value || 0;
+        const totalDeals = stats.total_deals || 0;
+
+        console.log('Updating stages table with:', stagesData);
+
+        const tbody = document.getElementById('stagesTableBody');
+        const footer = document.getElementById('stagesTableFooter');
+
+        if (!tbody) {
+            console.error('❌ stagesTableBody not found - check HTML structure');
+            this.createStagesTableIfMissing();
+            return;
+        }
+
+        // Сортируем стадии по убыванию суммы
+        const sortedStages = stagesData.sort((a, b) => b.value - a.value);
+
+        tbody.innerHTML = '';
+
+        sortedStages.forEach(stage => {
+            const percentage = totalValue > 0 ? ((stage.value / totalValue) * 100).toFixed(1) : 0;
+            const row = document.createElement('tr');
+            row.style.borderBottom = '1px solid #e9ecef';
+            row.style.transition = 'background-color 0.2s';
+
+            row.onmouseenter = () => row.style.backgroundColor = '#f8f9fa';
+            row.onmouseleave = () => row.style.backgroundColor = '';
+
+            const stageColor = this.getEnhancedStageColor(stage.stage_name, stage.stage_color);
+
+            row.innerHTML = `
+            <td style="padding: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="width: 16px; height: 16px; border-radius: 50%; background-color: ${stageColor}; border: 2px solid ${stageColor};"></div>
+                    <span style="font-weight: 500;">${stage.stage_name || 'Неизвестная стадия'}</span>
+                </div>
+            </td>
+            <td style="padding: 12px; text-align: center; font-weight: 600; color: #374151;">${stage.count.toLocaleString()}</td>
+            <td style="padding: 12px; text-align: right; font-weight: 600; color: #059669;">${stage.value.toLocaleString('ru-RU')} ₽</td>
+            <td style="padding: 12px; text-align: center;">
+                <span style="background: #e5e7eb; padding: 6px 12px; border-radius: 16px; font-size: 0.85em; font-weight: 600; color: #374151;">
+                    ${percentage}%
+                </span>
+            </td>
+        `;
+            tbody.appendChild(row);
+        });
+
+        if (footer) {
+            footer.style.display = 'table-footer-group';
+            document.getElementById('totalDealsCount').textContent = totalDeals.toLocaleString();
+            document.getElementById('totalDealsAmount').textContent = totalValue.toLocaleString('ru-RU') + ' ₽';
+        }
+
+        console.log('✅ Stages table updated with', sortedStages.length, 'stages');
+    }
+
+    static createStagesTableIfMissing() {
+        const resultsSection = document.querySelector('.results-section');
+        if (!resultsSection) {
+            console.error('❌ results-section not found');
+            return;
+        }
+
+        if (document.getElementById('stagesTableBody')) {
+            return;
+        }
+
+        console.log('🛠️ Creating stages table dynamically...');
+
+        const tableHTML = `
+        <div class="table-container" style="margin-top: 20px;">
+            <h3 style="padding: 20px 20px 0; margin: 0; color: #2c3e50;">📊 Статистика сделок по стадиям</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
+                        <th style="padding: 15px; text-align: left; width: 40%;">Стадия сделки</th>
+                        <th style="padding: 15px; text-align: center; width: 15%;">Количество</th>
+                        <th style="padding: 15px; text-align: right; width: 25%;">Сумма</th>
+                        <th style="padding: 15px; text-align: center; width: 20%;">Доля от общей суммы</th>
+                    </tr>
+                </thead>
+                <tbody id="stagesTableBody">
+                    <tr>
+                        <td colspan="4" style="text-align: center; padding: 40px; color: #6c757d;">
+                            Загрузка данных...
+                        </td>
+                    </tr>
+                </tbody>
+                <tfoot id="stagesTableFooter" style="display: none;">
+                    <tr style="background: #f8f9fa; font-weight: bold; border-top: 2px solid #e9ecef;">
+                        <td style="padding: 15px; text-align: left;">ИТОГО</td>
+                        <td style="padding: 15px; text-align: center;" id="totalDealsCount">0</td>
+                        <td style="padding: 15px; text-align: right;" id="totalDealsAmount">0 ₽</td>
+                        <td style="padding: 15px; text-align: center;">100%</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    `;
+
+        const summaryCards = resultsSection.querySelector('.summary-cards');
+        if (summaryCards && summaryCards.nextSibling) {
+            summaryCards.insertAdjacentHTML('afterend', tableHTML);
+        } else {
+            resultsSection.insertAdjacentHTML('beforeend', tableHTML);
+        }
+
+        console.log('✅ Stages table created dynamically');
+    }
+
+    static getEnhancedStageColor(stageName, originalColor) {
+        if (!stageName) return originalColor || '#cccccc';
+
+        const name = stageName.toLowerCase();
+
+        if (name.includes('проигр') || name.includes('lost') || name.includes('отказ')) {
+            if (name.includes('нереал') || name.includes('не реал')) return '#dc2626';
+            if (name.includes('отмен')) return '#ef4444';
+            return '#f87171';
+        }
+
+        if (name.includes('выигр') || name.includes('won') || name.includes('успеш') || name.includes('заверш')) {
+            return '#059669';
+        }
+
+        if (name.includes('обработ') || name.includes('в работе') || name.includes('взято') ||
+            name.includes('кп') || name.includes('коммерч') || name.includes('подготов') ||
+            name.includes('negotiation') || name.includes('processing')) {
+            return '#ea580c';
+        }
+
+        if (name.includes('нов') || name.includes('первич') || name.includes('инициир') ||
+            name.includes('new') || name.includes('initial') || name.includes('lead')) {
+            return '#2563eb';
+        }
+
+        if (name.includes('архив') || name.includes('не опред') || name.includes('unknown')) {
+            return '#6b7280';
+        }
+
+        return originalColor || '#6366f1';
     }
 
     static updateSummaryCards(stats) {
@@ -117,7 +276,6 @@ class DealsManager {
         document.getElementById('totalDeals').textContent = stats.total_deals?.toLocaleString() || '0';
         document.getElementById('totalDealsValue').textContent = stats.total_value?.toLocaleString() + ' ₽' || '0 ₽';
 
-        // Рассчитываем сделки в работе (все кроме завершенных)
         const inProgress = stats.deals_by_stage?.filter(stage =>
             !stage.stage_name.toLowerCase().includes('выигр') &&
             !stage.stage_name.toLowerCase().includes('проигр') &&
@@ -126,7 +284,6 @@ class DealsManager {
 
         document.getElementById('dealsInProgress').textContent = inProgress.toLocaleString();
 
-        // Успешные сделки (выигранные)
         const successful = stats.deals_by_stage?.filter(stage =>
             stage.stage_name.toLowerCase().includes('выигр') ||
             stage.stage_name.toLowerCase().includes('успеш')
@@ -142,17 +299,7 @@ class DealsManager {
             return;
         }
 
-        console.log('Displaying deals table with:', deals ? deals.length : 0, 'deals');
-
-        // Логируем распределение по стадиям для отладки
-        if (deals && deals.length > 0) {
-            const stageDistribution = {};
-            deals.forEach(deal => {
-                const stageName = deal.STAGE_NAME;
-                stageDistribution[stageName] = (stageDistribution[stageName] || 0) + 1;
-            });
-            console.log('📊 Stage distribution:', stageDistribution);
-        }
+        console.log('Displaying deals table with timing info:', deals ? deals.length : 0, 'deals');
 
         if (!deals || deals.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="loading">Нет данных о сделках</td></tr>';
@@ -160,8 +307,10 @@ class DealsManager {
             return;
         }
 
-        // Пагинация
-        const totalPages = Math.ceil(deals.length / this.pageSize);
+        this.currentDealsData = deals;
+        this.currentUserInfoMap = userInfoMap;
+
+        this.totalPages = Math.ceil(deals.length / this.pageSize);
         const startIndex = (this.currentPage - 1) * this.pageSize;
         const endIndex = Math.min(startIndex + this.pageSize, deals.length);
         const pageDeals = deals.slice(startIndex, endIndex);
@@ -172,15 +321,15 @@ class DealsManager {
             const row = document.createElement('tr');
             const globalIndex = startIndex + index + 1;
 
-            // Получаем информацию о пользователе
             const userInfo = userInfoMap[deal.ASSIGNED_BY_ID];
             const userName = userInfo ?
                 `${userInfo.NAME || ''} ${userInfo.LAST_NAME || ''}`.trim() :
                 `ID: ${deal.ASSIGNED_BY_ID}`;
 
-            // Форматируем даты
             let createdDate = 'Нет данных';
             let modifiedDate = 'Нет данных';
+            let takenToWorkDate = 'Не взята';
+            let daysInWork = '';
 
             try {
                 if (deal.DATE_CREATE) {
@@ -191,183 +340,314 @@ class DealsManager {
                     const modified = new Date(deal.DATE_MODIFY.replace('Z', '+00:00'));
                     modifiedDate = modified.toLocaleDateString('ru-RU');
                 }
+                if (deal.taken_to_work_date) {
+                    const taken = new Date(deal.taken_to_work_date.replace('Z', '+00:00'));
+                    takenToWorkDate = taken.toLocaleDateString('ru-RU');
+                    if (deal.days_in_work > 0) {
+                        daysInWork = `${deal.days_in_work} дн.`;
+                    }
+                }
             } catch (e) {
                 console.error('Error parsing dates:', e);
             }
 
-            // Создаем бейдж для стадии с цветом
-            const stageBadge = `<span class="stage-badge" style="background-color: ${deal.STAGE_COLOR || '#cccccc'}">${deal.STAGE_NAME || 'Неизвестно'}</span>`;
+        const stageColor = this.getEnhancedStageColor(deal.STAGE_NAME, deal.STAGE_COLOR);
+        const stageBadge = `<span class="stage-badge" style="background-color: ${stageColor}">${deal.STAGE_NAME || 'Неизвестно'}</span>`;
 
-            // Форматируем сумму
-            const amount = parseFloat(deal.OPPORTUNITY || 0).toLocaleString('ru-RU') + ' ₽';
+        const amount = parseFloat(deal.OPPORTUNITY || 0).toLocaleString('ru-RU') + ' ₽';
 
-            // Дополнительная информация о стадии
-            const stageInfo = deal.ENTITY_ID ? `<br><small>Тип: ${deal.ENTITY_ID}</small>` : '';
+        const workStatus = deal.is_in_work ?
+            `<span style="color: #059669; font-weight: 600;">✓ В работе</span>` :
+            `<span style="color: #6b7280;">⏳ Ожидание</span>`;
 
-            row.innerHTML = `
+        row.innerHTML = `
             <td>
                 <strong>#${globalIndex}. ${escapeHtml(deal.TITLE || 'Без названия')}</strong>
-                ${stageInfo}
             </td>
             <td>${escapeHtml(userName)}</td>
             <td>${stageBadge}</td>
             <td style="text-align: right;">${amount}</td>
             <td>${createdDate}</td>
             <td>${modifiedDate}</td>
-            <td>${deal.ID}</td>
+            <td>
+                <div style="font-size: 0.9em;">
+                    <div>${takenToWorkDate}</div>
+                    <div style="color: #6b7280; font-size: 0.8em;">${daysInWork}</div>
+                </div>
+            </td>
+            <td>${workStatus}</td>
         `;
-            tbody.appendChild(row);
-        });
+        tbody.appendChild(row);
+    });
 
-        if (showPagination) {
-            this.updatePagination(deals.length, totalPages);
-        }
-
-        console.log('✅ Deals table updated with', pageDeals.length, 'rows (page', this.currentPage, 'of', totalPages + ')');
+    if (showPagination) {
+        this.updatePagination(deals.length, this.totalPages);
     }
 
-    static updatePagination(totalDeals, totalPages) {
-        const paginationContainer = document.getElementById('dealsPagination');
-        if (!paginationContainer) return;
+    console.log('✅ Deals table updated with timing info');
+}
 
-        if (totalDeals === 0) {
-            paginationContainer.innerHTML = '';
-            return;
-        }
+static updatePagination(totalDeals, totalPages) {
+    const paginationContainer = document.getElementById('dealsPagination');
+    if (!paginationContainer) return;
 
-        const startIndex = (this.currentPage - 1) * this.pageSize + 1;
-        const endIndex = Math.min(this.currentPage * this.pageSize, totalDeals);
+    if (totalDeals === 0) {
+        paginationContainer.innerHTML = '';
+        return;
+    }
 
-        paginationContainer.innerHTML = `
-            <div class="pagination-info">
-                Показано ${startIndex}-${endIndex} из ${totalDeals} сделок
-            </div>
-            <div class="pagination-controls">
-                <button class="pagination-btn" onclick="DealsManager.previousPage()" ${this.currentPage === 1 ? 'disabled' : ''}>
-                    ◀ Назад
-                </button>
-                <span class="pagination-page">Страница ${this.currentPage} из ${totalPages}</span>
-                <button class="pagination-btn" onclick="DealsManager.nextPage()" ${this.currentPage === totalPages ? 'disabled' : ''}>
-                    Вперед ▶
-                </button>
+    const startIndex = (this.currentPage - 1) * this.pageSize + 1;
+    const endIndex = Math.min(this.currentPage * this.pageSize, totalDeals);
+
+    let largeDatasetWarning = '';
+    if (totalDeals > 1000) {
+        largeDatasetWarning = `
+            <div style="color: #f59e0b; font-size: 12px; margin-top: 5px;">
+                ⚠️ Большой набор данных. Рекомендуется использовать фильтры по дате.
             </div>
         `;
     }
 
-    static nextPage() {
+    paginationContainer.innerHTML = `
+        <div class="pagination-info">
+            Показано ${startIndex}-${endIndex} из ${totalDeals.toLocaleString()} сделок
+            ${largeDatasetWarning}
+        </div>
+        <div class="pagination-controls">
+            <button class="pagination-btn" onclick="DealsManager.previousPage()" ${this.currentPage === 1 ? 'disabled' : ''}>
+                ◀ Назад
+            </button>
+            <span class="pagination-page">Страница ${this.currentPage} из ${totalPages}</span>
+            <button class="pagination-btn" onclick="DealsManager.nextPage()" ${this.currentPage === totalPages ? 'disabled' : ''}>
+                Вперед ▶
+            </button>
+        </div>
+    `;
+}
+
+static nextPage() {
+    if (this.currentPage < this.totalPages) {
         this.currentPage++;
-        this.refreshCurrentView();
+        this.displayCurrentPage();
     }
+}
 
-    static previousPage() {
+static previousPage() {
+    if (this.currentPage > 1) {
         this.currentPage--;
-        this.refreshCurrentView();
+        this.displayCurrentPage();
+    }
+}
+
+static displayCurrentPage() {
+    if (this.currentDealsData && this.currentUserInfoMap) {
+        this.displayDealsTable(this.currentDealsData, this.currentUserInfoMap, true);
+        console.log(`🔄 Displaying page ${this.currentPage} of ${this.totalPages}`);
+    } else {
+        console.error('❌ No data available for pagination');
+    }
+}
+
+static switchView(viewType) {
+    this.currentView = viewType;
+    this.currentPage = 1;
+    console.log(`🔄 Switched to view: ${viewType}, page reset to 1`);
+}
+
+static showProgress(current, total, message = 'Загрузка сделок...') {
+    const progressHtml = `
+        <div id="dealsProgress" style="
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+            z-index: 10000;
+            text-align: center;
+            min-width: 300px;
+        ">
+            <h3>${message}</h3>
+            <div style="margin: 15px 0;">
+                <div style="background: #f0f0f0; border-radius: 10px; height: 20px;">
+                    <div style="
+                        background: linear-gradient(135deg, #667eea, #764ba2);
+                        height: 100%;
+                        border-radius: 10px;
+                        width: ${(current / total) * 100}%;
+                        transition: width 0.3s;
+                    "></div>
+                </div>
+                <div style="margin-top: 10px; font-size: 14px;">
+                    ${current} из ${total} сделок
+                </div>
+            </div>
+            <button onclick="DealsManager.hideProgress()" style="
+                background: #f56565;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 5px;
+                cursor: pointer;
+            ">Отмена</button>
+        </div>
+    `;
+    
+    this.hideProgress();
+    document.body.insertAdjacentHTML('beforeend', progressHtml);
+}
+
+static hideProgress() {
+    const progress = document.getElementById('dealsProgress');
+    if (progress) {
+        progress.remove();
+    }
+}
+
+static calculateStatsFromDeals(deals) {
+    if (!deals || deals.length === 0) {
+        return {
+            total_deals: 0,
+            total_value: 0,
+            deals_by_stage: []
+        };
     }
 
-    static refreshCurrentView() {
-        if (this.currentView === 'period') {
-            loadDealsData();
-        } else {
-            loadUserAllDeals();
-        }
-    }
+    const stageStats = {};
+    let totalValue = 0;
 
-    static switchView(viewType) {
-        this.currentView = viewType;
-        this.currentPage = 1; // Сбрасываем на первую страницу
-    }
+    deals.forEach(deal => {
+        const stageId = deal.STAGE_ID;
+        const stageName = deal.STAGE_NAME;
+        const stageColor = deal.STAGE_COLOR;
+        const value = parseFloat(deal.OPPORTUNITY || 0);
 
-    // 🔥 НОВАЯ ФУНКЦИЯ: Расчет статистики на фронтенде для всех сделок
-    static calculateStatsFromDeals(deals) {
-        if (!deals || deals.length === 0) {
-            return {
-                total_deals: 0,
-                total_value: 0,
-                deals_by_stage: []
+        if (!stageStats[stageId]) {
+            stageStats[stageId] = {
+                stage_id: stageId,
+                stage_name: stageName,
+                stage_color: stageColor,
+                count: 0,
+                value: 0
             };
         }
 
-        const stageStats = {};
-        let totalValue = 0;
+        stageStats[stageId].count += 1;
+        stageStats[stageId].value += value;
+        totalValue += value;
+    });
 
-        deals.forEach(deal => {
-            const stageId = deal.STAGE_ID;
-            const stageName = deal.STAGE_NAME;
-            const stageColor = deal.STAGE_COLOR;
-            const value = parseFloat(deal.OPPORTUNITY || 0);
+    const dealsByStage = Object.values(stageStats);
 
-            if (!stageStats[stageId]) {
-                stageStats[stageId] = {
-                    stage_id: stageId,
-                    stage_name: stageName,
-                    stage_color: stageColor,
-                    count: 0,
-                    value: 0
-                };
-            }
-
-            stageStats[stageId].count += 1;
-            stageStats[stageId].value += value;
-            totalValue += value;
-        });
-
-        const dealsByStage = Object.values(stageStats);
-
-        return {
-            total_deals: deals.length,
-            total_value: totalValue,
-            deals_by_stage: dealsByStage
-        };
-    }
+    return {
+        total_deals: deals.length,
+        total_value: totalValue,
+        deals_by_stage: dealsByStage
+    };
+}
 }
 
-function escapeHtml(unsafe) {
-    if (typeof unsafe !== 'string') return unsafe;
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
+async function testDealsConnection() {
+showLoading('Тестирование подключения к сделкам...');
 
-// Функции для работы с UI
-async function loadDealsData() {
-    showLoading('Загрузка данных о сделках...');
-    DealsManager.switchView('period');
-
+try {
     const selectedUsers = getSelectedDealsUsers();
     const startDate = document.getElementById('dealsStartDate').value;
     const endDate = document.getElementById('dealsEndDate').value;
 
-    try {
-        // 🔥 ИСПОЛЬЗУЕМ УЖЕ ЗАГРУЖЕННЫХ ПОЛЬЗОВАТЕЛЕЙ ИЗ app.js
-        const userInfoMap = {};
-        if (window.allUsers && window.allUsers.length > 0) {
-            window.allUsers.forEach(user => {
-                userInfoMap[user.ID] = user;
-            });
-            console.log('✅ Using existing users cache:', Object.keys(userInfoMap).length);
-        } else {
-            // Если нет кэша, загружаем но КЭШИРУЕМ
-            const allUsersResponse = await BitrixAPI.getAllUsers();
-            if (allUsersResponse.users) {
-                window.allUsers = allUsersResponse.users; // Сохраняем в глобальный кэш
-                allUsersResponse.users.forEach(user => {
-                    userInfoMap[user.ID] = user;
-                });
-                console.log('✅ Loaded and cached users:', Object.keys(userInfoMap).length);
-            }
+    console.log('🧪 Testing deals connection...');
+
+    const testResult = await BitrixAPI.debugDealsDetailed(startDate, endDate, selectedUsers);
+    console.log('🧪 Test result:', testResult);
+
+    if (testResult.success) {
+        let message = `✅ Тест пройден!\n\n`;
+        message += `Сервис: ${testResult.service_status.service_exists ? 'OK' : 'ERROR'}\n`;
+        message += `Webhook: ${testResult.service_status.webhook_configured ? 'OK' : 'ERROR'}\n`;
+        message += `Найдено сделок: ${testResult.deals_count}\n`;
+        message += `Найдено стадий: ${testResult.stages_count}\n`;
+        message += `Статистика: ${testResult.stats_available ? 'OK' : 'ERROR'}\n`;
+
+        if (testResult.sample_deals && testResult.sample_deals.length > 0) {
+            message += `\nПример сделки: "${testResult.sample_deals[0].TITLE}"`;
         }
 
-        // Остальной код без изменений...
-        const dealsResponse = await BitrixAPI.getDealsList(startDate, endDate, selectedUsers, 1000);
+        alert(message);
+    } else {
+        alert(`❌ Тест не пройден: ${testResult.error}\nТип ошибки: ${testResult.error_type}`);
+    }
+} catch (error) {
+    console.error('❌ Test error:', error);
+    alert(`❌ Ошибка тестирования: ${error.message}`);
+} finally {
+    hideLoading();
+}
+}
 
-        if (dealsResponse.success) {
-            DealsManager.currentDealsData = dealsResponse.deals;
-            DealsManager.displayDealsTable(dealsResponse.deals, userInfoMap, true);
+function escapeHtml(unsafe) {
+if (typeof unsafe !== 'string') return unsafe;
+return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
-            const statsResponse = await BitrixAPI.getDealsStats(startDate, endDate, selectedUsers);
+async function loadDealsData() {
+showLoading('Загрузка данных о сделках...');
+DealsManager.switchView('period');
+DealsManager.currentPage = 1;
+
+const selectedUsers = getSelectedDealsUsers();
+const startDate = document.getElementById('dealsStartDate').value;
+const endDate = document.getElementById('dealsEndDate').value;
+
+try {
+    console.log('🔍 Starting deals load:', { selectedUsers, startDate, endDate });
+
+    const testResponse = await BitrixAPI.debugTestDeals(startDate, endDate, selectedUsers);
+    console.log('🔧 Test response:', testResponse);
+
+    if (!testResponse.success) {
+        throw new Error('Тест не пройден: ' + testResponse.error);
+    }
+
+    const userInfoMap = {};
+    let allUsersResponse;
+
+    try {
+        allUsersResponse = await BitrixAPI.getAllUsers();
+        if (allUsersResponse.users) {
+            window.allUsers = allUsersResponse.users;
+            allUsersResponse.users.forEach(user => {
+                userInfoMap[user.ID] = user;
+            });
+            console.log('✅ Loaded users:', Object.keys(userInfoMap).length);
+        }
+    } catch (userError) {
+        console.warn('⚠️ Could not load users, using fallback');
+        const presalesResponse = await BitrixAPI.getUsersList();
+        if (presalesResponse.users) {
+            presalesResponse.users.forEach(user => {
+                userInfoMap[user.ID] = user;
+            });
+        }
+    }
+
+    console.log('📊 Loading deals...');
+    const dealsResponse = await BitrixAPI.getDealsList(startDate, endDate, selectedUsers, 500);
+
+    console.log('📊 Deals response:', dealsResponse);
+
+    if (dealsResponse.success && dealsResponse.deals) {
+        DealsManager.currentDealsData = dealsResponse.deals;
+        DealsManager.displayDealsTable(dealsResponse.deals, userInfoMap, true);
+
+        try {
+            const statsResponse = await BitrixAPI.getEnhancedDealsStats(startDate, endDate, selectedUsers);
             if (statsResponse.success && statsResponse.stats) {
                 DealsManager.updateSummaryCards(statsResponse.stats);
                 DealsManager.updateCharts(statsResponse.stats);
@@ -376,143 +656,168 @@ async function loadDealsData() {
                 DealsManager.updateSummaryCards(calculatedStats);
                 DealsManager.updateCharts(calculatedStats);
             }
-
-            showNotification(`✅ Загружено ${dealsResponse.count} сделок за период`, 'success');
-        } else {
-            throw new Error(dealsResponse.error || 'Unknown error from server');
-        }
-
-    } catch (error) {
-        console.error('❌ Error loading deals:', error);
-        showNotification('❌ Ошибка загрузки сделок: ' + error.message, 'error');
-    } finally {
-        hideLoading();
-    }
-}
-
-// 🔥 НОВАЯ ФУНКЦИЯ: Загрузка ВСЕХ сделок сотрудников
-async function loadUserAllDeals() {
-    showLoading('Загрузка всех сделок сотрудников...');
-    DealsManager.switchView('all');
-
-    const selectedUsers = getSelectedDealsUsers();
-
-    if (selectedUsers.length === 0) {
-        showNotification('❌ Выберите хотя бы одного сотрудника', 'error');
-        hideLoading();
-        return;
-    }
-
-    try {
-        // Загружаем список ВСЕХ пользователей для отображения имен
-        const allUsersResponse = await BitrixAPI.getAllUsers();
-        const userInfoMap = {};
-        if (allUsersResponse.users) {
-            allUsersResponse.users.forEach(user => {
-                userInfoMap[user.ID] = user;
-            });
-        }
-
-        // Загружаем ВСЕ сделки сотрудников
-        const dealsResponse = await BitrixAPI.getUserAllDeals(selectedUsers);
-
-        if (dealsResponse.success) {
-            DealsManager.currentDealsData = dealsResponse.deals;
-            DealsManager.displayDealsTable(dealsResponse.deals, userInfoMap, true);
-
-            // 🔥 РАССЧИТЫВАЕМ СТАТИСТИКУ НА ФРОНТЕНДЕ для всех сделок
+        } catch (statsError) {
+            console.warn('⚠️ Stats error, using frontend calculation:', statsError);
             const calculatedStats = DealsManager.calculateStatsFromDeals(dealsResponse.deals);
             DealsManager.updateSummaryCards(calculatedStats);
             DealsManager.updateCharts(calculatedStats);
-
-            showNotification(`✅ Загружено ${dealsResponse.count} всех сделок сотрудников`, 'success');
-        } else {
-            throw new Error(dealsResponse.error || 'Unknown error from server');
         }
 
-    } catch (error) {
-        console.error('❌ Error loading all deals:', error);
-        showNotification('❌ Ошибка загрузки всех сделок: ' + error.message, 'error');
-
-        const tbody = document.getElementById('dealsBody');
-        if (tbody) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="7" style="text-align:center;padding:40px;color:#f56565">
-                        ❌ Ошибка загрузки данных<br>
-                        <small>${error.message}</small><br>
-                        <button onclick="loadUserAllDeals()" style="margin-top:15px">🔄 Попробовать снова</button>
-                    </td>
-                </tr>
-            `;
-        }
-    } finally {
-        hideLoading();
+        showNotification(`✅ Загружено ${dealsResponse.count} сделок за период`, 'success');
+    } else {
+        throw new Error(dealsResponse.error || 'Не удалось загрузить сделки');
     }
+
+} catch (error) {
+    console.error('❌ Error loading deals:', error);
+
+    let errorMessage = error.message;
+    if (error.message.includes('Failed to fetch')) {
+        errorMessage = 'Проблема с подключением к серверу';
+    } else if (error.message.includes('401')) {
+        errorMessage = 'Требуется авторизация';
+    }
+
+    showNotification('❌ Ошибка загрузки сделок: ' + errorMessage, 'error');
+
+    const tbody = document.getElementById('dealsBody');
+    if (tbody) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" style="text-align:center;padding:40px;color:#f56565">
+                    ❌ Ошибка загрузки данных<br>
+                    <small>${errorMessage}</small><br>
+                    <button onclick="loadDealsData()" style="margin-top:15px">🔄 Попробовать снова</button>
+                </td>
+            </tr>
+        `;
+    }
+} finally {
+    hideLoading();
+}
+}
+
+async function loadUserAllDeals() {
+const selectedUsers = getSelectedDealsUsers();
+
+if (selectedUsers.length === 0) {
+    showNotification('❌ Выберите хотя бы одного сотрудника', 'error');
+    return;
+}
+
+if (!confirm(`⚠️ Вы запрашиваете ВСЕ сделки выбранных сотрудников. Это может занять несколько минут и загрузить тысячи сделок. Продолжить?`)) {
+    return;
+}
+
+showLoading('Подготовка к загрузке всех сделок...');
+
+DealsManager.switchView('all');
+
+try {
+    console.log('👥 Loading ALL deals for users:', selectedUsers);
+
+    const allUsersResponse = await BitrixAPI.getAllUsers();
+    const userInfoMap = {};
+    if (allUsersResponse.users) {
+        allUsersResponse.users.forEach(user => {
+            userInfoMap[user.ID] = user;
+        });
+    }
+
+    const dealsResponse = await BitrixAPI.getUserAllDeals(selectedUsers);
+
+    console.log('👥 All deals response:', dealsResponse);
+
+    if (dealsResponse.success && dealsResponse.deals) {
+        DealsManager.currentDealsData = dealsResponse.deals;
+        DealsManager.displayDealsTable(dealsResponse.deals, userInfoMap, true);
+
+        const calculatedStats = DealsManager.calculateStatsFromDeals(dealsResponse.deals);
+        DealsManager.updateSummaryCards(calculatedStats);
+        DealsManager.updateCharts(calculatedStats);
+
+        showNotification(`✅ Загружено ${dealsResponse.count} всех сделок сотрудников`, 'success');
+    } else {
+        throw new Error(dealsResponse.error || 'Не удалось загрузить сделки');
+    }
+
+} catch (error) {
+    console.error('❌ Error loading all deals:', error);
+    showNotification('❌ Ошибка загрузки всех сделок: ' + error.message, 'error');
+
+    const tbody = document.getElementById('dealsBody');
+    if (tbody) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" style="text-align:center;padding:40px;color:#f56565">
+                    ❌ Ошибка загрузки данных<br>
+                    <small>${error.message}</small><br>
+                    <button onclick="loadUserAllDeals()" style="margin-top:15px">🔄 Попробовать снова</button>
+                </td>
+            </tr>
+        `;
+    }
+} finally {
+    hideLoading();
+    DealsManager.hideProgress();
+}
 }
 
 function getSelectedDealsUsers() {
-    const checkboxes = document.querySelectorAll('#dealsEmployeesCheckboxes input[type="checkbox"]:checked');
-    return Array.from(checkboxes).map(cb => cb.value);
+const checkboxes = document.querySelectorAll('#dealsEmployeesCheckboxes input[type="checkbox"]:checked');
+return Array.from(checkboxes).map(cb => cb.value);
 }
 
 function renderDealsUserCheckboxes(users) {
-    const container = document.getElementById('dealsEmployeesCheckboxes');
-    if (!container) return;
+const container = document.getElementById('dealsEmployeesCheckboxes');
+if (!container) return;
 
-    container.innerHTML = '';
-    users.forEach(user => {
-        const div = document.createElement('div');
-        div.className = 'checkbox-item';
-        div.innerHTML = `
-            <input type="checkbox" id="deals_user_${user.ID}" value="${user.ID}" class="user-checkbox" checked>
-            <label for="deals_user_${user.ID}">${user.NAME} ${user.LAST_NAME}</label>
-        `;
-        container.appendChild(div);
-    });
+container.innerHTML = '';
+users.forEach(user => {
+    const div = document.createElement('div');
+    div.className = 'checkbox-item';
+    div.innerHTML = `
+        <input type="checkbox" id="deals_user_${user.ID}" value="${user.ID}" class="user-checkbox" checked>
+        <label for="deals_user_${user.ID}">${user.NAME} ${user.LAST_NAME}</label>
+    `;
+    container.appendChild(div);
+});
 }
 
 function switchTab(tabName) {
-    // Скрываем все вкладки
-    document.querySelectorAll('.tab-content').forEach(tab => {
-        tab.classList.remove('active');
-    });
+document.querySelectorAll('.tab-content').forEach(tab => {
+    tab.classList.remove('active');
+});
 
-    // Убираем активный класс со всех кнопок
-    document.querySelectorAll('.tab-button').forEach(button => {
-        button.classList.remove('active');
-    });
+document.querySelectorAll('.tab-button').forEach(button => {
+    button.classList.remove('active');
+});
 
-    // Показываем выбранную вкладку
-    document.getElementById(`${tabName}-tab`).classList.add('active');
+document.getElementById(`${tabName}-tab`).classList.add('active');
+event.target.classList.add('active');
 
-    // Активируем кнопку
-    event.target.classList.add('active');
+if (tabName === 'deals') {
+    DealsManager.initCharts();
 
-    // Инициализируем графики для вкладки сделок при первом переходе
-    if (tabName === 'deals') {
-        DealsManager.initCharts();
+    const today = new Date();
+    const startDate = new Date(today);
+    startDate.setMonth(today.getMonth() - 1);
 
-        // Устанавливаем даты по умолчанию для сделок
-        const today = new Date();
-        const startDate = new Date(today);
-        startDate.setMonth(today.getMonth() - 1); // Последние 30 дней
-
-        document.getElementById('dealsStartDate').value = startDate.toISOString().split('T')[0];
-        document.getElementById('dealsEndDate').value = today.toISOString().split('T')[0];
-    }
+    document.getElementById('dealsStartDate').value = startDate.toISOString().split('T')[0];
+    document.getElementById('dealsEndDate').value = today.toISOString().split('T')[0];
+}
 }
 
 async function loadAnalyticsData() {
-    showNotification('📊 Раздел аналитики в разработке', 'info');
+showNotification('📊 Раздел аналитики в разработке', 'info');
 }
 
-// Инициализация при загрузке
-document.addEventListener('DOMContentLoaded', function () {
-    // Инициализируем вкладку сделок когда DOM готов
-    setTimeout(() => {
-        if (document.getElementById('deals-tab')) {
-            DealsManager.initCharts();
-        }
-    }, 1000);
+document.addEventListener('DOMContentLoaded', function() {
+console.log('🔄 DealsManager initializing...');
+    
+setTimeout(() => {
+    if (!document.getElementById('stagesTableBody')) {
+        DealsManager.createStagesTableIfMissing();
+    }
+}, 1000);
 });

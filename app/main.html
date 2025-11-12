@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bitrix24 Analytics Dashboard</title>
     <script>
-        const buildDate = "2025.11.11.2.12"; // Формат: ГГГГ.ММ.ДД.ВЕРСИЯ
+        const buildDate = "2025.11.12.2.37"; // Формат: ГГГГ.ММ.ДД.ВЕРСИЯ
     </script>
 
     <button id="authButton" onclick="showAuthModal()" style="
@@ -192,8 +192,20 @@
                         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                             <button class="apply-btn" onclick="loadDealsData()">📊 Сделки за период</button>
                             <button class="load-btn" onclick="loadUserAllDeals()">👥 Все сделки сотрудников</button>
+                            <button class="quick-btn" onclick="testDealsConnection()"
+                                style="background: #f59e0b; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;">🧪
+                                Тест подключения</button>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <div class="quick-actions"
+                style="padding: 15px 25px; background: #f8f9fa; border-bottom: 1px solid #e9ecef;">
+                <div class="quick-buttons" style="display: flex; gap: 15px; flex-wrap: wrap;">
+                    <button class="quick-btn" onclick="testDealsConnection()"
+                        style="background: #f59e0b; color: white; border: none; padding: 10px 20px; border-radius: 25px; cursor: pointer; font-size: 14px; transition: all 0.3s;">🧪
+                        Тест подключения сделок</button>
                 </div>
             </div>
 
@@ -221,18 +233,20 @@
                     </div>
                 </div>
 
-                <!-- Графики для сделок -->
+                <!-- Секция графиков для сделок -->
                 <div class="charts-section">
                     <div class="chart-container">
-                        <h3>📊 Сделки по стадиям</h3>
+                        <h3>📊 Распределение сделок по стадиям</h3>
                         <canvas id="dealsStagesChart"></canvas>
                     </div>
                     <div class="chart-container">
-                        <h3>💰 Сумма по стадиям</h3>
+                        <h3>💰 Сумма сделок по стадиям</h3>
                         <canvas id="dealsValueChart"></canvas>
                     </div>
                 </div>
-                <div class="table-container">
+
+                <!-- 🔥 ТАБЛИЦА СТАТИСТИКИ ПО СТАДИЯМ -->
+                <div class="table-container" style="margin-top: 30px;">
                     <table id="dealsTable">
                         <thead>
                             <tr>
@@ -242,12 +256,13 @@
                                 <th>Сумма</th>
                                 <th>Дата создания</th>
                                 <th>Дата изменения</th>
-                                <th>ID</th>
+                                <th>Взята в работу</th>
+                                <th>Статус</th>
                             </tr>
                         </thead>
                         <tbody id="dealsBody">
                             <tr>
-                                <td colspan="7" class="loading">Загрузка данных о сделках...</td>
+                                <td colspan="8" class="loading">Загрузка данных о сделках...</td>
                             </tr>
                         </tbody>
                     </table>
