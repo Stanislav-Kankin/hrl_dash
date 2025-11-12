@@ -16,8 +16,8 @@ class BitrixService:
         self._cache = {}
         self._cache_ttl = 10 * 60
         self.executor = ThreadPoolExecutor(max_workers=5)
-        self.max_activities_per_user = 1000  # 🔥 ОГРАНИЧЕНИЕ на количество активностей на пользователя
-        self.max_days_per_request = 30  # 🔥 Максимальный период в днях для одного запроса
+        # self.max_activities_per_user = 1000  # 🔥 ОГРАНИЧЕНИЕ на количество активностей на пользователя
+        # self.max_days_per_request = 30  # 🔥 Максимальный период в днях для одного запроса
         
     async def ensure_session(self):
         """Создает сессию если её нет"""
@@ -119,7 +119,7 @@ class BitrixService:
         user_ids: List[str] = None,
         activity_types: List[str] = None
     ) -> Optional[List[Dict]]:
-        """ОСНОВНОЙ МЕТОД - получение активностей с ОГРАНИЧЕНИЯМИ для больших периодов"""
+        """ОСНОВНОЙ МЕТОД - получение активностей БЕЗ ОГРАНИЧЕНИЙ"""
         try:
             # Определяем диапазон дат
             if start_date and end_date:
@@ -128,27 +128,18 @@ class BitrixService:
                 start_date_obj = start_date_obj.replace(hour=0, minute=0, second=0, microsecond=0)
                 end_date_obj = end_date_obj.replace(hour=23, minute=59, second=59, microsecond=999999)
                 
-                # 🔥 ПРОВЕРКА: если период больше максимального - разбиваем на части
+                # 🔥 УБРАЛИ ПРОВЕРКУ НА БОЛЬШИЕ ПЕРИОДЫ - ЗАГРУЖАЕМ ВСЕ
                 total_days = (end_date_obj - start_date_obj).days + 1
-                if total_days > self.max_days_per_request:
-                    logger.info(f"📅 Large period detected: {total_days} days, splitting into chunks...")
-                    return await self._get_activities_large_period(
-                        start_date_obj, end_date_obj, user_ids, activity_types
-                    )
-                    
+                logger.info(f"📅 Loading activities for {total_days} days")
+                        
             elif days:
                 end_date_obj = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
                 start_date_obj = (end_date_obj - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
-                
-                # 🔥 ПРОВЕРКА для дней
-                if days > self.max_days_per_request:
-                    logger.info(f"📅 Large period detected: {days} days, splitting into chunks...")
-                    return await self._get_activities_large_period(
-                        start_date_obj, end_date_obj, user_ids, activity_types
-                    )
+                logger.info(f"📅 Loading activities for {days} days")
             else:
                 end_date_obj = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
                 start_date_obj = (end_date_obj - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+                logger.info(f"📅 Loading activities for 30 days (default)")
 
             start_date_str = start_date_obj.strftime("%Y-%m-%dT%H:%M:%S")
             end_date_str = end_date_obj.strftime("%Y-%m-%dT%H:%M:%S")
@@ -240,6 +231,50 @@ class BitrixService:
         
         logger.info(f"📅 Large period completed: {len(all_activities)} total activities")
         return all_activities
+    
+    async def get_activity_statistics_from_activities(self, activities: List[Dict], start_date: str, end_date: str) -> Dict[str, Any]:
+        """Генерирует статистику из готового списка активностей (для кэша)"""
+        if not activities:
+            return {}
+
+        daily_stats = {}
+        hourly_stats = {str(i).zfill(2): 0 for i in range(24)}
+        type_stats = {}
+        weekday_stats = {
+            'Monday': 0, 'Tuesday': 0, 'Wednesday': 0, 'Thursday': 0,
+            'Friday': 0, 'Saturday': 0, 'Sunday': 0
+        }
+
+        for activity in activities:
+            created_str = activity['CREATED'].replace('Z', '+00:00')
+            activity_date = datetime.fromisoformat(created_str)
+            date_key = activity_date.strftime('%Y-%m-%d')
+            hour_key = activity_date.strftime('%H')
+            weekday = activity_date.strftime('%A')
+            type_id = str(activity['TYPE_ID'])
+
+            if date_key not in daily_stats:
+                daily_stats[date_key] = {'date': date_key, 'day_of_week': weekday, 'total': 0, 'by_type': {}}
+
+            daily_stats[date_key]['total'] += 1
+            daily_stats[date_key]['by_type'][type_id] = daily_stats[date_key]['by_type'].get(type_id, 0) + 1
+            type_stats[type_id] = type_stats.get(type_id, 0) + 1
+            hourly_stats[hour_key] += 1
+            weekday_stats[weekday] += 1
+
+        sorted_daily = sorted(daily_stats.values(), key=lambda x: x['date'])
+
+        return {
+            'total_activities': len(activities),
+            'daily_stats': sorted_daily,
+            'hourly_stats': hourly_stats,
+            'type_stats': type_stats,
+            'weekday_stats': weekday_stats,
+            'date_range': {
+                'start': sorted_daily[0]['date'] if sorted_daily else start_date,
+                'end': sorted_daily[-1]['date'] if sorted_daily else end_date
+            }
+        }
 
     async def _get_activities_for_period(
         self,
@@ -279,11 +314,11 @@ class BitrixService:
         end_date_str: str, 
         activity_types: List[str] = None
     ) -> List[Dict]:
-        """Получение активностей для одного пользователя с ОГРАНИЧЕНИЕМ количества"""
+        """Получение активностей для одного пользователя БЕЗ ОГРАНИЧЕНИЙ"""
         user_activities = []
         start = 0
         request_count = 0
-        max_requests = 20  # 🔥 УМЕНЬШАЕМ максимальное количество запросов (1000 активностей)
+        max_requests = 100  # 🔥 УВЕЛИЧИЛИ ДЛЯ БОЛЬШИХ ОБЪЕМОВ ДАННЫХ
 
         while request_count < max_requests:
             params = {
@@ -306,10 +341,8 @@ class BitrixService:
             user_activities.extend(activities)
             logger.info(f"🔍 User {user_id} - Batch {request_count + 1}: got {len(activities)} activities, total: {len(user_activities)}")
 
-            # 🔥 ПРОВЕРКА: не превысили ли максимальное количество активностей
-            if len(user_activities) >= self.max_activities_per_user:
-                logger.warning(f"⚠️ User {user_id} reached activity limit ({self.max_activities_per_user}), stopping")
-                break
+            # 🔥 УБРАЛИ ПРОВЕРКУ НА МАКСИМАЛЬНОЕ КОЛИЧЕСТВО АКТИВНОСТЕЙ
+            # Загружаем все доступные активности
 
             if len(activities) < 50:
                 logger.info(f"🔍 User {user_id} - Last batch had {len(activities)} items, stopping pagination.")
@@ -319,6 +352,7 @@ class BitrixService:
             request_count += 1
             await asyncio.sleep(0.1)  # 🔥 Увеличиваем задержку
 
+        logger.info(f"🔍 User {user_id} - COMPLETED: {len(user_activities)} total activities")
         return user_activities
 
     async def _filter_completed_activities(self, activities: List[Dict]) -> List[Dict]:
@@ -398,9 +432,9 @@ class BitrixService:
         start_date: str = None,
         end_date: str = None,
         user_ids: List[str] = None,
-        limit: int = None  # 🔥 НОВЫЙ ПАРАМЕТР
+        limit: int = None
     ) -> Optional[List[Dict]]:
-        """Получение списка сделок - С ПАГИНАЦИЕЙ"""
+        """Получение списка сделок - БЕЗ ОГРАНИЧЕНИЙ"""
         try:
             all_deals = []
             start = 0
@@ -408,7 +442,7 @@ class BitrixService:
             
             while True:
                 params = {
-                    'select[]': ['ID', 'TITLE', 'STAGE_ID', 'ASSIGNED_BY_ID', 'DATE_CREATE', 'DATE_MODIFY', 'OPPORTUNITY', 'CURRENCY_ID'],
+                    'select[]': ['ID', 'TITLE', 'STAGE_ID', 'ASSIGNED_BY_ID', 'DATE_CREATE', 'DATE_MODIFY', 'OPPORTUNITY', 'CURRENCY_ID', 'TYPE_ID', 'STATUS_ID'],
                     'start': start
                 }
 
@@ -433,46 +467,68 @@ class BitrixService:
                 all_deals.extend(deals)
                 logger.info(f"📊 Batch {start//50 + 1}: got {len(deals)} deals, total: {len(all_deals)}")
 
-                # 🔥 ОСТАНАВЛИВАЕМСЯ ЕСЛИ:
-                # 1. Получили меньше 50 сделок (значит это последняя страница)
-                # 2. Достигли лимита если он указан
-                # 3. Превысили максимальное количество (например 1000 чтобы не зависнуть)
+                # 🔥 УБРАЛИ ЛИМИТЫ - ЗАГРУЖАЕМ ВСЕ ДАННЫЕ
                 if len(deals) < 50:
-                    break
-                    
-                if limit and len(all_deals) >= limit:
-                    all_deals = all_deals[:limit]
-                    break
-                    
-                if len(all_deals) >= 1000:  # Максимальная защита
-                    logger.warning("⚠️ Reached maximum deals limit (1000)")
                     break
 
                 start += 50
-                await asyncio.sleep(0.1)  # Пауза между запросами
+                await asyncio.sleep(0.1)
 
             logger.info(f"📊 Total deals loaded: {len(all_deals)}")
 
-            # Получаем информацию о стадиях
-            stages = await self.get_deal_stages()
-            stage_map = {stage['STATUS_ID']: stage for stage in stages} if stages else {}
-
-            # Обогащаем сделки данными о стадиях
+            # Получаем ВСЕ типы стадий
+            all_stages = await self.get_deal_stages()
+            
+            # Создаем карту для всех возможных ID стадий
+            stage_map = {}
+            for stage in all_stages:
+                stage_id = stage.get('STATUS_ID')
+                stage_map[stage_id] = stage
+            
+            # 🔥 УЛУЧШЕННОЕ СОПОСТАВЛЕНИЕ СТАДИЙ
             enriched_deals = []
             for deal in all_deals:
-                stage_info = stage_map.get(deal.get('STAGE_ID'), {})
+                stage_id = deal.get('STAGE_ID')
+                type_id = deal.get('TYPE_ID')
+                status_id = deal.get('STATUS_ID')
+                
+                # Пробуем найти стадию в порядке приоритета
+                stage_info = None
+                for potential_id in [stage_id, type_id, status_id]:
+                    if potential_id and potential_id in stage_map:
+                        stage_info = stage_map[potential_id]
+                        break
+                
+                # Если не нашли, создаем базовую информацию
+                if not stage_info:
+                    stage_info = {
+                        'NAME': stage_id or 'Неизвестно',
+                        'COLOR': '#cccccc'
+                    }
+                
                 enriched_deals.append({
                     'ID': deal.get('ID'),
                     'TITLE': deal.get('TITLE'),
-                    'STAGE_ID': deal.get('STAGE_ID'),
+                    'STAGE_ID': stage_id,
+                    'TYPE_ID': type_id,
+                    'STATUS_ID': status_id,
                     'STAGE_NAME': stage_info.get('NAME', 'Неизвестно'),
                     'STAGE_COLOR': stage_info.get('COLOR', '#cccccc'),
+                    'ENTITY_ID': stage_info.get('ENTITY_ID', 'UNKNOWN'),
                     'ASSIGNED_BY_ID': deal.get('ASSIGNED_BY_ID'),
                     'DATE_CREATE': deal.get('DATE_CREATE'),
                     'DATE_MODIFY': deal.get('DATE_MODIFY'),
                     'OPPORTUNITY': deal.get('OPPORTUNITY'),
                     'CURRENCY_ID': deal.get('CURRENCY_ID')
                 })
+
+            # Логируем распределение по стадиям
+            stage_distribution = {}
+            for deal in enriched_deals:
+                stage_name = deal['STAGE_NAME']
+                stage_distribution[stage_name] = stage_distribution.get(stage_name, 0) + 1
+            
+            logger.info(f"📊 Stage distribution: {stage_distribution}")
 
             return enriched_deals
 

@@ -868,9 +868,9 @@ function showRegister() {
     document.getElementById('registerForm').style.display = 'block';
 }
 
-// ========== БЫСТРАЯ ЗАГРУЗКА ==========
+/// ========== СУПЕР-БЫСТРАЯ ЗАГРУЗКА ==========
 async function loadDataFast() {
-    showLoading('Быстрая загрузка из кэша...');
+    showLoading('Мгновенная загрузка из кэша...');
 
     const selectedUsers = getSelectedUsers();
     const startDate = document.getElementById('startDate').value;
@@ -884,7 +884,8 @@ async function loadDataFast() {
     }
 
     try {
-        let url = `/api/stats/fast?start_date=${startDate}&end_date=${endDate}&include_statistics=true`;
+        // 🔥 ИСПОЛЬЗУЕМ НОВЫЙ СУПЕР-БЫСТРЫЙ ЭНДПОИНТ
+        let url = `/api/stats/super-fast?start_date=${startDate}&end_date=${endDate}&include_statistics=true`;
         if (selectedUsers.length > 0) {
             url += `&user_ids=${selectedUsers.join(',')}`;
         }
@@ -892,11 +893,12 @@ async function loadDataFast() {
             url += `&activity_type=${activityType}`;
         }
 
-        console.log('⚡ Fast loading from cache:', url);
+        console.log('🚀 SUPER-FAST loading from cache:', url);
 
+        // 🔥 ОЧЕНЬ КОРОТКИЙ ТАЙМАУТ - кэш должен отвечать мгновенно
         const response = await fetchWithTimeout(url, {
             headers: getAuthHeaders(),
-            timeout: 10000 // 10 секунд для быстрой загрузки
+            timeout: 3000 // 3 секунды максимум
         });
 
         if (!response.ok) {
@@ -906,32 +908,84 @@ async function loadDataFast() {
         const data = await response.json();
 
         if (data.success) {
-            if (data.from_cache) {
-                displayResults(data);
-                showNotification('✅ Данные загружены из кэша', 'success');
+            displayResults(data);
+
+            if (data.cache_completeness < 100) {
+                showNotification(`✅ Данные загружены из кэша (${data.cache_completeness?.toFixed(1) || 0}% рабочих дней)`, 'info');
             } else {
-                // Если данных в кэше нет
-                const shouldLoad = confirm('❌ Данные за выбранный период не найдены в кэше. Загрузить из Bitrix?');
+                showNotification('✅ Данные мгновенно загружены из кэша (все рабочие дни)', 'success');
+            }
+
+            console.log('🚀 SUPER-FAST LOAD SUCCESS: Loaded from cache without ANY Bitrix logic');
+
+        } else {
+            // 🔥 Если в кэше нет данных - предлагаем загрузить из Bitrix
+            if (data.from_cache === true && data.cache_completeness === 0) {
+                const shouldLoad = confirm('❌ В кэше нет данных за выбранный период. Загрузить из Bitrix?');
                 if (shouldLoad) {
                     await loadDataFromBitrix();
                 }
+            } else {
+                throw new Error(data.error || 'Unknown error from server');
             }
-        } else {
-            throw new Error(data.error || 'Unknown error from server');
         }
 
     } catch (error) {
-        console.error('❌ Error in fast load:', error);
+        console.error('❌ Error in super-fast load:', error);
 
-        if (error.message.includes('504') || error.message.includes('Timeout')) {
-            showNotification('🌐 Сервер не отвечает. Попробуйте позже', 'error');
+        if (error.name === 'TimeoutError') {
+            // 🔥 Если таймаут - значит кэш не отвечает, пробуем обычную быструю загрузку
+            console.log('⚡ Super-fast timeout, trying regular fast load...');
+            await loadDataFastFallback(startDate, endDate, selectedUsers, activityType);
         } else {
             showNotification('❌ Ошибка быстрой загрузки: ' + error.message, 'error');
+            showEmptyTableWithError(error.message);
         }
-
-        showEmptyTableWithError(error.message);
     } finally {
         hideLoading();
+    }
+}
+
+// 🔥 РЕЗЕРВНЫЙ МЕТОД если супер-быстрая загрузка не сработала
+async function loadDataFastFallback(startDate, endDate, selectedUsers, activityType) {
+    try {
+        showLoading('Быстрая загрузка (резервный метод)...');
+
+        let url = `/api/stats/fast?start_date=${startDate}&end_date=${endDate}&include_statistics=true`;
+        if (selectedUsers.length > 0) {
+            url += `&user_ids=${selectedUsers.join(',')}`;
+        }
+        if (activityType !== 'all') {
+            url += `&activity_type=${activityType}`;
+        }
+
+        console.log('⚡ Fallback fast loading:', url);
+
+        const response = await fetchWithTimeout(url, {
+            headers: getAuthHeaders(),
+            timeout: 5000
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+            displayResults(data);
+            showNotification('✅ Данные загружены из кэша', 'success');
+        } else {
+            const shouldLoad = confirm(`❌ Данные в кэше неполные (${data.cache_completeness?.toFixed(1) || 0}%). Загрузить из Bitrix?`);
+            if (shouldLoad) {
+                await loadDataFromBitrix();
+            }
+        }
+
+    } catch (error) {
+        console.error('❌ Error in fallback fast load:', error);
+        showNotification('❌ Не удалось загрузить данные из кэша', 'error');
+        showEmptyTableWithError('Не удалось загрузить данные из кэша');
     }
 }
 

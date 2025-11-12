@@ -341,6 +341,79 @@ class DataWarehouseService:
         except Exception as e:
             logger.error(f"Error clearing old cache: {e}")
     
+    async def get_cached_activities_direct(self, user_ids: List[str], start_date: str, end_date: str, activity_types: List[str] = None) -> Dict:
+        """
+        🔥 СУПЕР-ПРОСТОЙ МЕТОД - считает полноту только по РАБОЧИМ дням
+        """
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                placeholders = ','.join('?' for _ in user_ids)
+                
+                query = f'''
+                    SELECT raw_data, data_date FROM activities_cache 
+                    WHERE user_id IN ({placeholders}) 
+                    AND data_date BETWEEN ? AND ?
+                '''
+                params = user_ids + [start_date, end_date]
+                
+                if activity_types and activity_types != ['all']:
+                    type_placeholders = ','.join('?' for _ in activity_types)
+                    query += f' AND type_id IN ({type_placeholders})'
+                    params.extend(activity_types)
+                
+                query += ' ORDER BY created DESC'
+                
+                cursor = await db.execute(query, params)
+                rows = await cursor.fetchall()
+                
+                activities = []
+                cached_dates = set()
+                
+                for row in rows:
+                    try:
+                        activity_data = json.loads(row[0])
+                        activities.append(activity_data)
+                        cached_dates.add(row[1])
+                    except Exception as e:
+                        continue
+                
+                # 🔥 СЧИТАЕМ ТОЛЬКО РАБОЧИЕ ДНИ
+                start = datetime.fromisoformat(start_date)
+                end = datetime.fromisoformat(end_date)
+                
+                work_days = 0
+                current = start
+                while current <= end:
+                    # Пн=0, Вт=1, Ср=2, Чт=3, Пт=4, Сб=5, Вс=6
+                    if current.weekday() < 5:  # Только пн-пт
+                        work_days += 1
+                    current += timedelta(days=1)
+                
+                # Считаем рабочие дни с данными
+                work_days_with_data = 0
+                current = start
+                while current <= end:
+                    date_str = current.strftime("%Y-%m-%d")
+                    if current.weekday() < 5 and date_str in cached_dates:
+                        work_days_with_data += 1
+                    current += timedelta(days=1)
+                
+                completeness = (work_days_with_data / work_days) * 100 if work_days > 0 else 0
+                
+                logger.info(f"🚀 Direct cache access: {len(activities)} activities, {work_days_with_data}/{work_days} work days ({completeness:.1f}% complete)")
+                
+                return {
+                    "activities": activities,
+                    "completeness": completeness,
+                    "work_days_with_data": work_days_with_data,
+                    "total_work_days": work_days,
+                    "note": "Полнота считается только по рабочим дням (пн-пт)"
+                }
+                    
+        except Exception as e:
+            logger.error(f"Error in direct cache access: {e}")
+            return {"activities": [], "completeness": 0}
+        
     async def get_cached_activities_optimized(self, user_ids: List[str], start_date: str, end_date: str, activity_types: List[str] = None) -> Dict:
         """
         Умное получение данных из кэша с фильтрацией по типу активности
@@ -410,10 +483,6 @@ class DataWarehouseService:
                     "cached_days_count": len(cached_dates),
                     "total_days": total_days
                 }
-                    
-        except Exception as e:
-            logger.error(f"Error analyzing cache: {e}")
-            return {"activities": [], "missing_days": [], "completeness": 0}
                     
         except Exception as e:
             logger.error(f"Error analyzing cache: {e}")
@@ -558,3 +627,65 @@ class DataWarehouseService:
         except Exception as e:
             logger.error(f"Error analyzing cache for selected users: {e}")
             return {"activities": [], "missing_days": [], "completeness": 0, "selected_users": selected_user_ids}
+
+    async def get_cached_activities_simple(self, user_ids: List[str], start_date: str, end_date: str, activity_types: List[str] = None) -> Dict:
+        """
+        🔥 УПРОЩЕННЫЙ МЕТОД для быстрой загрузки - только проверяет наличие данных без сложной логики
+        """
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                placeholders = ','.join('?' for _ in user_ids)
+                
+                # Простой запрос - получаем ВСЕ данные за период
+                query = f'''
+                    SELECT raw_data, data_date FROM activities_cache 
+                    WHERE user_id IN ({placeholders}) 
+                    AND data_date BETWEEN ? AND ?
+                '''
+                params = user_ids + [start_date, end_date]
+                
+                # Фильтр по типу активности
+                if activity_types and activity_types != ['all']:
+                    type_placeholders = ','.join('?' for _ in activity_types)
+                    query += f' AND type_id IN ({type_placeholders})'
+                    params.extend(activity_types)
+                
+                query += ' ORDER BY created DESC'
+                
+                cursor = await db.execute(query, params)
+                rows = await cursor.fetchall()
+                
+                if not rows:
+                    return {"activities": [], "completeness": 0}
+                
+                # Просто собираем активности
+                activities = []
+                cached_dates = set()
+                
+                for row in rows:
+                    try:
+                        activity_data = json.loads(row[0])
+                        activities.append(activity_data)
+                        cached_dates.add(row[1])
+                    except Exception as e:
+                        continue
+                
+                # Простая проверка полноты - считаем дни
+                start = datetime.fromisoformat(start_date)
+                end = datetime.fromisoformat(end_date)
+                total_days = (end - start).days + 1
+                
+                completeness = (len(cached_dates) / total_days) * 100
+                
+                logger.info(f"⚡ Simple cache check: {len(activities)} activities, {completeness:.1f}% complete ({len(cached_dates)}/{total_days} days)")
+                
+                return {
+                    "activities": activities,
+                    "completeness": completeness,
+                    "cached_days": len(cached_dates),
+                    "total_days": total_days
+                }
+                    
+        except Exception as e:
+            logger.error(f"Error in simple cache check: {e}")
+            return {"activities": [], "completeness": 0}

@@ -649,18 +649,18 @@ async def get_fast_stats(
 
         logger.info(f"⚡ Fast stats: {start_date} to {end_date}, selected users: {len(target_user_ids)}")
 
-        # 🔥 ТОЛЬКО ДАННЫЕ ИЗ КЭША - НИКАКИХ ЗАПРОСОВ К BITRIX
-        cache_analysis = await warehouse_service.get_cached_activities_optimized(
-            target_user_ids, start_date, end_date
+        # 🔥 ИСПОЛЬЗУЕМ УПРОЩЕННЫЙ МЕТОД ДЛЯ ПРОВЕРКИ КЭША
+        cache_analysis = await warehouse_service.get_cached_activities_simple(
+            target_user_ids, start_date, end_date, activity_types
         )
         
         cached_activities = cache_analysis["activities"]
         completeness = cache_analysis["completeness"]
 
-        # 🔥 ТОЛЬКО если данные полностью в кэше (>70%)
-        if completeness >= 70.0:
+        # 🔥 ТОЛЬКО если данные полностью в кэше (>95%)
+        if completeness >= 95.0:
             activities = cached_activities
-            logger.info(f"⚡ Using cached data for {len(target_user_ids)} users: {completeness:.1f}% complete (required: 70.0%)")
+            logger.info(f"⚡ Using cached data for {len(target_user_ids)} users: {completeness:.1f}% complete (required: 95.0%)")
             
             # --- Логика подсчета статистики из активностей ---
             user_activities = {}
@@ -995,6 +995,112 @@ async def get_deals_list(
         }
     except Exception as e:
         logger.error(f"❌ Error in get_deals_list: {str(e)}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/stats/super-fast")
+async def get_super_fast_stats(
+    start_date: str,
+    end_date: str,
+    user_ids: str = None,
+    activity_type: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """СУПЕР-БЫСТРЫЙ эндпоинт - ТОЛЬКО из кэша, НИКАКИХ запросов к Bitrix"""
+    try:
+        user_ids_list = user_ids.split(',') if user_ids else []
+        activity_types = [activity_type] if activity_type else None
+        presales_users = await bitrix_service.get_presales_users()
+        if not presales_users:
+            return {"success": False, "error": "Список сотрудников пуст"}
+
+        user_info_map = {str(u['ID']): u for u in presales_users}
+        target_user_ids = user_ids_list if user_ids_list else list(user_info_map.keys())
+
+        logger.info(f"🚀 SUPER-FAST stats: {start_date} to {end_date}, users: {len(target_user_ids)}")
+
+        # 🔥 ПРЯМОЙ ДОСТУП К КЭШУ - НИКАКОЙ СЛОЖНОЙ ЛОГИКИ
+        cache_result = await warehouse_service.get_cached_activities_direct(
+            target_user_ids, start_date, end_date, activity_types
+        )
+        
+        activities = cache_result["activities"]
+        completeness = cache_result["completeness"]
+
+        # 🔥 ВСЕГДА возвращаем данные из кэша, даже если они неполные
+        if activities:
+            logger.info(f"🚀 Using cached data: {len(activities)} activities ({completeness:.1f}% work days complete)")
+            
+            # --- Логика подсчета статистики из активностей ---
+            user_activities = {}
+            for act in activities:
+                uid = str(act['AUTHOR_ID'])
+                if uid in target_user_ids:
+                    if uid not in user_activities:
+                        user_activities[uid] = []
+                    user_activities[uid].append(act)
+
+            response_users = user_ids_list if user_ids_list else list(user_info_map.keys())
+            user_stats = []
+            for uid in response_users:
+                info = user_info_map.get(uid)
+                if not info:
+                    continue
+
+                acts = user_activities.get(uid, [])
+                calls = len([a for a in acts if str(a['TYPE_ID']) == '2'])
+                comments = len([a for a in acts if str(a['TYPE_ID']) == '6'])
+                tasks = len([a for a in acts if str(a['TYPE_ID']) == '4'])
+                meetings = len([a for a in acts if str(a['TYPE_ID']) == '1'])
+                total = len(acts)
+                activity_dates = {datetime.fromisoformat(a['CREATED'].replace('Z', '+00:00')).strftime('%Y-%m-%d') for a in acts}
+                last_act = max([datetime.fromisoformat(a['CREATED'].replace('Z', '+00:00')) for a in acts]) if acts else None
+
+                user_stats.append({
+                    "user_id": uid,
+                    "user_name": f"{info.get('NAME', '')} {info.get('LAST_NAME', '')}".strip(),
+                    "calls": calls,
+                    "comments": comments,
+                    "tasks": tasks,
+                    "meetings": meetings,
+                    "total": total,
+                    "days_count": len(activity_dates),
+                    "last_activity_date": last_act.strftime('%Y-%m-%d %H:%M') if last_act else "Нет данных"
+                })
+
+            total_activities = sum(len(user_activities.get(uid, [])) for uid in response_users)
+
+            result = {
+                "success": True, 
+                "user_stats": user_stats, 
+                "total_activities": total_activities,
+                "cache_used": True,
+                "from_cache": True,
+                "cache_completeness": completeness,
+                "activities_count": len(activities),
+                "start_date": start_date,
+                "end_date": end_date,
+                "note": "Данные загружены из кэша. Для полных данных используйте загрузку из Bitrix."
+            }
+
+            # Статистика для графиков (тоже из кэша)
+            if activities:
+                result["statistics"] = await bitrix_service.get_activity_statistics_from_activities(
+                    activities, start_date, end_date
+                )
+
+            return result
+        else:
+            # 🔥 Если в кэше вообще нет данных
+            return {
+                "success": False,
+                "from_cache": True,
+                "cache_completeness": 0,
+                "error": "В кэше нет данных за выбранный период. Используйте загрузку из Bitrix."
+            }
+        
+    except Exception as e:
+        logger.error(f"❌ Error in get_super_fast_stats: {str(e)}", exc_info=True)
         return {"success": False, "error": str(e)}
 
 
