@@ -243,349 +243,352 @@
                         <h3>💰 Сумма сделок по стадиям</h3>
                         <canvas id="dealsValueChart"></canvas>
                     </div>
+                    <div class="chart-container" id="dealsComparisonChartContainer" style="display: none;">
+                        <h3>👥 Сравнение сотрудников по сделкам</h3>
+                        <canvas id="dealsComparisonChart"></canvas>
+                    </div>
+
+                    <!-- 🔥 ТАБЛИЦА СТАТИСТИКИ ПО СТАДИЯМ -->
+                    <div class="table-container" style="margin-top: 30px;">
+                        <table id="dealsTable">
+                            <thead>
+                                <tr>
+                                    <th>Название</th>
+                                    <th>Ответственный</th>
+                                    <th>Стадия</th>
+                                    <th>Сумма</th>
+                                    <th>Дата создания</th>
+                                    <th>Дата изменения</th>
+                                    <th>Взята в работу</th>
+                                    <th>Статус</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dealsBody">
+                                <tr>
+                                    <td colspan="8" class="loading">Загрузка данных о сделках...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <div id="dealsPagination"
+                            style="padding: 15px; background: #f8f9fa; border-top: 1px solid #e9ecef; display: flex; justify-content: space-between; align-items: center;">
+                        </div>
+                    </div>
                 </div>
+            </div>
 
-                <!-- 🔥 ТАБЛИЦА СТАТИСТИКИ ПО СТАДИЯМ -->
-                <div class="table-container" style="margin-top: 30px;">
-                    <table id="dealsTable">
-                        <thead>
-                            <tr>
-                                <th>Название</th>
-                                <th>Ответственный</th>
-                                <th>Стадия</th>
-                                <th>Сумма</th>
-                                <th>Дата создания</th>
-                                <th>Дата изменения</th>
-                                <th>Взята в работу</th>
-                                <th>Статус</th>
-                            </tr>
-                        </thead>
-                        <tbody id="dealsBody">
-                            <tr>
-                                <td colspan="8" class="loading">Загрузка данных о сделках...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-
-                    <div id="dealsPagination"
-                        style="padding: 15px; background: #f8f9fa; border-top: 1px solid #e9ecef; display: flex; justify-content: space-between; align-items: center;">
+            <!-- Вкладка Аналитика -->
+            <div id="analytics-tab" class="tab-content">
+                <div class="results-section">
+                    <div style="text-align: center; padding: 60px 20px;">
+                        <h2>📊 Аналитика</h2>
+                        <p style="color: #6c757d; margin-top: 10px;">
+                            Раздел в разработке. Здесь будут расширенные аналитические отчеты и графики.
+                        </p>
+                        <div style="margin-top: 30px;">
+                            <button class="apply-btn" onclick="loadAnalyticsData()">🔄 Загрузить аналитику</button>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Вкладка Аналитика -->
-        <div id="analytics-tab" class="tab-content">
-            <div class="results-section">
-                <div style="text-align: center; padding: 60px 20px;">
-                    <h2>📊 Аналитика</h2>
-                    <p style="color: #6c757d; margin-top: 10px;">
-                        Раздел в разработке. Здесь будут расширенные аналитические отчеты и графики.
-                    </p>
-                    <div style="margin-top: 30px;">
-                        <button class="apply-btn" onclick="loadAnalyticsData()">🔄 Загрузить аналитику</button>
+        <!-- Модальное окно авторизации -->
+        <div id="authModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>🔐 Авторизация</h2>
+                    <span class="close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div id="loginForm">
+                        <h3>Вход</h3>
+                        <form onsubmit="return login(event)">
+                            <div class="form-group">
+                                <label>Email:</label>
+                                <input type="email" id="loginEmail" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Пароль:</label>
+                                <input type="password" id="loginPassword" required>
+                            </div>
+                            <button type="submit" class="auth-btn">Войти</button>
+                        </form>
+                        <p>Нет аккаунта? <a href="#" onclick="showRegister()">Зарегистрироваться</a></p>
+                    </div>
+                    <div id="registerForm" style="display: none;">
+                        <h3>Регистрация</h3>
+                        <form onsubmit="return register(event)">
+                            <div class="form-group">
+                                <label>Имя:</label>
+                                <input type="text" id="registerName">
+                            </div>
+                            <div class="form-group">
+                                <label>Email:</label>
+                                <input type="email" id="registerEmail" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Пароль:</label>
+                                <input type="password" id="registerPassword" required>
+                            </div>
+                            <button type="submit" class="auth-btn">Зарегистрироваться</button>
+                        </form>
+                        <p>Уже есть аккаунт? <a href="#" onclick="showLogin()">Войти</a></p>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Модальное окно авторизации -->
-    <div id="authModal" class="modal" style="display: none;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>🔐 Авторизация</h2>
-                <span class="close">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div id="loginForm">
-                    <h3>Вход</h3>
-                    <form onsubmit="return login(event)">
-                        <div class="form-group">
-                            <label>Email:</label>
-                            <input type="email" id="loginEmail" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Пароль:</label>
-                            <input type="password" id="loginPassword" required>
-                        </div>
-                        <button type="submit" class="auth-btn">Войти</button>
-                    </form>
-                    <p>Нет аккаунта? <a href="#" onclick="showRegister()">Зарегистрироваться</a></p>
-                </div>
-                <div id="registerForm" style="display: none;">
-                    <h3>Регистрация</h3>
-                    <form onsubmit="return register(event)">
-                        <div class="form-group">
-                            <label>Имя:</label>
-                            <input type="text" id="registerName">
-                        </div>
-                        <div class="form-group">
-                            <label>Email:</label>
-                            <input type="email" id="registerEmail" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Пароль:</label>
-                            <input type="password" id="registerPassword" required>
-                        </div>
-                        <button type="submit" class="auth-btn">Зарегистрироваться</button>
-                    </form>
-                    <p>Уже есть аккаунт? <a href="#" onclick="showLogin()">Войти</a></p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <style>
-        /* Стили для вкладок */
-        .tabs-section {
-            background: #f8f9fa;
-            border-bottom: 1px solid #e9ecef;
-        }
-
-        .tabs {
-            display: flex;
-            padding: 0 25px;
-            gap: 0;
-        }
-
-        .tab-button {
-            background: #f8f9fa;
-            border: none;
-            padding: 15px 25px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            color: #495057;
-            border-bottom: 3px solid transparent;
-            transition: all 0.3s;
-        }
-
-        .tab-button:hover {
-            background: #e9ecef;
-            color: #2c3e50;
-        }
-
-        .tab-button.active {
-            background: white;
-            color: #667eea;
-            border-bottom: 3px solid #667eea;
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        .checkbox-group {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            max-height: 120px;
-            overflow-y: auto;
-            padding: 8px;
-            border: 1px solid #e9ecef;
-            border-radius: 8px;
-            background: white;
-        }
-
-        .checkbox-item {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            white-space: nowrap;
-        }
-
-        .checkbox-item input {
-            margin: 0;
-        }
-
-        .modal {
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-        }
-
-        .modal-content {
-            background-color: white;
-            margin: 10% auto;
-            padding: 0;
-            border-radius: 10px;
-            width: 400px;
-            max-width: 90%;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-        }
-
-        .modal-header {
-            background: linear-gradient(135deg, #2c3e50, #34495e);
-            color: white;
-            padding: 20px;
-            border-radius: 10px 10px 0 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .modal-header h2 {
-            margin: 0;
-            font-size: 1.5em;
-        }
-
-        .close {
-            color: white;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .close:hover {
-            color: #ccc;
-        }
-
-        .modal-body {
-            padding: 30px;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #495057;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            font-size: 14px;
-            transition: border-color 0.3s;
-        }
-
-        .form-group input:focus {
-            border-color: #667eea;
-            outline: none;
-        }
-
-        .auth-btn {
-            width: 100%;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            border: none;
-            padding: 12px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: 600;
-            transition: transform 0.2s;
-        }
-
-        .auth-btn:hover {
-            transform: translateY(-2px);
-        }
-
-        .modal-body p {
-            text-align: center;
-            margin-top: 20px;
-        }
-
-        .modal-body a {
-            color: #667eea;
-            text-decoration: none;
-        }
-
-        .modal-body a:hover {
-            text-decoration: underline;
-        }
-
-        /* Индикатор загрузки */
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-            backdrop-filter: blur(5px);
-        }
-
-        .loading-spinner {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            text-align: center;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-        }
-
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 15px;
-        }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
+        <style>
+            /* Стили для вкладок */
+            .tabs-section {
+                background: #f8f9fa;
+                border-bottom: 1px solid #e9ecef;
             }
 
-            100% {
-                transform: rotate(360deg);
+            .tabs {
+                display: flex;
+                padding: 0 25px;
+                gap: 0;
             }
-        }
 
-        /* Стили для стадий сделок */
-        .stage-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 0.8em;
-            font-weight: 600;
-            color: white;
-        }
-    </style>
+            .tab-button {
+                background: #f8f9fa;
+                border: none;
+                padding: 15px 25px;
+                cursor: pointer;
+                font-size: 14px;
+                font-weight: 600;
+                color: #495057;
+                border-bottom: 3px solid transparent;
+                transition: all 0.3s;
+            }
 
-    <!-- Индикатор загрузки -->
-    <div id="loadingOverlay" class="loading-overlay">
-        <div class="loading-spinner">
-            <div class="spinner"></div>
-            <div id="loadingText">Загрузка данных...</div>
+            .tab-button:hover {
+                background: #e9ecef;
+                color: #2c3e50;
+            }
+
+            .tab-button.active {
+                background: white;
+                color: #667eea;
+                border-bottom: 3px solid #667eea;
+            }
+
+            .tab-content {
+                display: none;
+            }
+
+            .tab-content.active {
+                display: block;
+            }
+
+            .checkbox-group {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                max-height: 120px;
+                overflow-y: auto;
+                padding: 8px;
+                border: 1px solid #e9ecef;
+                border-radius: 8px;
+                background: white;
+            }
+
+            .checkbox-item {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                white-space: nowrap;
+            }
+
+            .checkbox-item input {
+                margin: 0;
+            }
+
+            .modal {
+                position: fixed;
+                z-index: 1000;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0, 0, 0, 0.5);
+            }
+
+            .modal-content {
+                background-color: white;
+                margin: 10% auto;
+                padding: 0;
+                border-radius: 10px;
+                width: 400px;
+                max-width: 90%;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            }
+
+            .modal-header {
+                background: linear-gradient(135deg, #2c3e50, #34495e);
+                color: white;
+                padding: 20px;
+                border-radius: 10px 10px 0 0;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .modal-header h2 {
+                margin: 0;
+                font-size: 1.5em;
+            }
+
+            .close {
+                color: white;
+                font-size: 28px;
+                font-weight: bold;
+                cursor: pointer;
+            }
+
+            .close:hover {
+                color: #ccc;
+            }
+
+            .modal-body {
+                padding: 30px;
+            }
+
+            .form-group {
+                margin-bottom: 20px;
+            }
+
+            .form-group label {
+                display: block;
+                margin-bottom: 8px;
+                font-weight: 600;
+                color: #495057;
+            }
+
+            .form-group input {
+                width: 100%;
+                padding: 12px;
+                border: 2px solid #e9ecef;
+                border-radius: 8px;
+                font-size: 14px;
+                transition: border-color 0.3s;
+            }
+
+            .form-group input:focus {
+                border-color: #667eea;
+                outline: none;
+            }
+
+            .auth-btn {
+                width: 100%;
+                background: linear-gradient(135deg, #667eea, #764ba2);
+                color: white;
+                border: none;
+                padding: 12px;
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 16px;
+                font-weight: 600;
+                transition: transform 0.2s;
+            }
+
+            .auth-btn:hover {
+                transform: translateY(-2px);
+            }
+
+            .modal-body p {
+                text-align: center;
+                margin-top: 20px;
+            }
+
+            .modal-body a {
+                color: #667eea;
+                text-decoration: none;
+            }
+
+            .modal-body a:hover {
+                text-decoration: underline;
+            }
+
+            /* Индикатор загрузки */
+            .loading-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.7);
+                display: none;
+                justify-content: center;
+                align-items: center;
+                z-index: 9999;
+                backdrop-filter: blur(5px);
+            }
+
+            .loading-spinner {
+                background: white;
+                padding: 30px;
+                border-radius: 15px;
+                text-align: center;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            }
+
+            .spinner {
+                width: 40px;
+                height: 40px;
+                border: 4px solid #f3f3f3;
+                border-top: 4px solid #667eea;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+                margin: 0 auto 15px;
+            }
+
+            @keyframes spin {
+                0% {
+                    transform: rotate(0deg);
+                }
+
+                100% {
+                    transform: rotate(360deg);
+                }
+            }
+
+            /* Стили для стадий сделок */
+            .stage-badge {
+                display: inline-block;
+                padding: 4px 8px;
+                border-radius: 12px;
+                font-size: 0.8em;
+                font-weight: 600;
+                color: white;
+            }
+        </style>
+
+        <!-- Индикатор загрузки -->
+        <div id="loadingOverlay" class="loading-overlay">
+            <div class="loading-spinner">
+                <div class="spinner"></div>
+                <div id="loadingText">Загрузка данных...</div>
+            </div>
         </div>
-    </div>
 
-    <script src="/static/js/api.js"></script>
-    <script src="/static/js/charts.js"></script>
-    <script src="/static/js/deals.js"></script>
-    <script src="/static/js/app.js"></script>
-    <script>
-        console.log('🔍 DEBUG: Checking DOM elements before app.js loads...');
-        const checkElements = ['employeesCheckboxes', 'activityTypeSelect', 'startDate', 'endDate'];
-        checkElements.forEach(id => {
-            const el = document.getElementById(id);
-            console.log(`🔍 ${id}:`, el ? 'FOUND' : 'NOT FOUND', el);
-        });
-        // Проверим всю структуру
-        console.log('🔍 Full filters section:', document.querySelector('.filters-section'));
-        console.log('🔍 All inputs in filters:', document.querySelectorAll('.filters-section input, .filters-section select'));
-    </script>
+        <script src="/static/js/api.js"></script>
+        <script src="/static/js/charts.js"></script>
+        <script src="/static/js/deals.js"></script>
+        <script src="/static/js/app.js"></script>
+        <script>
+            console.log('🔍 DEBUG: Checking DOM elements before app.js loads...');
+            const checkElements = ['employeesCheckboxes', 'activityTypeSelect', 'startDate', 'endDate'];
+            checkElements.forEach(id => {
+                const el = document.getElementById(id);
+                console.log(`🔍 ${id}:`, el ? 'FOUND' : 'NOT FOUND', el);
+            });
+            // Проверим всю структуру
+            console.log('🔍 Full filters section:', document.querySelector('.filters-section'));
+            console.log('🔍 All inputs in filters:', document.querySelectorAll('.filters-section input, .filters-section select'));
+        </script>
 </body>
 
 </html>
