@@ -1047,30 +1047,18 @@ async function loadDataFromBitrix() {
     }
 
     try {
-        // 🔥 РАСЧИТЫВАЕМ ДЛИТЕЛЬНОСТЬ ПЕРИОДА ДЛЯ ТАЙМАУТА
+        // 🔥 ПРОВЕРКА РАЗМЕРА ПЕРИОДА
         const start = new Date(startDate);
         const end = new Date(endDate);
         const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
 
-        // 🔥 АДАПТИВНЫЕ ТАЙМАУТЫ ДЛЯ БОЛЬШИХ ПЕРИОДОВ
-        const getTimeout = () => {
-            if (daysDiff <= 1) return 30000;
-            if (daysDiff <= 7) return 45000;
-            if (daysDiff <= 30) return 60000;
-            if (daysDiff <= 90) return 120000;
-            return 180000;
-        };
-
-        const timeoutMs = getTimeout();
-        console.log(`⏰ Period: ${daysDiff} days, timeout: ${timeoutMs}ms`);
-
-        // 🔥 ПРЕДУПРЕЖДЕНИЕ ДЛЯ БОЛЬШИХ ПЕРИОДОВ
         if (daysDiff > 30) {
-            if (!confirm(`Вы запрашиваете данные за ${daysDiff} дней. Это может занять несколько минут. Продолжить?`)) {
-                hideLoading();
+            const useProgressive = confirm(`📅 Выбран большой период (${daysDiff} дней). Рекомендуется использовать прогрессивную загрузку для стабильности. Использовать прогрессивную загрузку?`);
+            
+            if (useProgressive) {
+                await loadProgressiveData(startDate, endDate, selectedUsers);
                 return;
             }
-            showLoading(`Загрузка данных за ${daysDiff} дней из Bitrix... Это может занять несколько минут`);
         }
 
         let url = `/api/stats/main?start_date=${startDate}&end_date=${endDate}&include_statistics=true&force_refresh=true`;
@@ -1085,7 +1073,7 @@ async function loadDataFromBitrix() {
 
         const response = await fetchWithTimeout(url, {
             headers: getAuthHeaders(),
-            timeout: timeoutMs
+            timeout: 45000 // 45 секунд
         });
 
         if (!response.ok) {
@@ -1096,12 +1084,7 @@ async function loadDataFromBitrix() {
 
         if (data.success) {
             displayResults(data);
-
-            if (data.cache_used) {
-                showNotification('✅ Данные загружены из кэша', 'success');
-            } else {
-                showNotification('📊 Данные загружены из Bitrix и сохранены в кэш', 'info');
-            }
+            showNotification('📊 Данные загружены из Bitrix и сохранены в кэш', 'info');
         } else {
             throw new Error(data.error || 'Unknown error from server');
         }
@@ -1112,14 +1095,49 @@ async function loadDataFromBitrix() {
         if (error.name === 'TimeoutError') {
             showNotification(`⏰ Превышено время ожидания. Попробуйте меньший период`, 'error');
         } else if (error.message.includes('504')) {
-            showNotification('🌐 Сервер не отвечает (Gateway Timeout). Попробуйте меньший период', 'error');
+            showNotification('🌐 Сервер не отвечает. Попробуйте прогрессивную загрузку или меньший период', 'error');
         } else {
             showNotification('❌ Ошибка загрузки из Bitrix: ' + error.message, 'error');
         }
 
-        showEmptyTableWithError(error.message, daysDiff > 30);
+        showEmptyTableWithError(error.message);
     } finally {
         hideLoading();
+    }
+}
+
+// 🔥 НОВАЯ ФУНКЦИЯ: Прогрессивная загрузка
+async function loadProgressiveData(startDate, endDate, selectedUsers) {
+    try {
+        showLoading('Прогрессивная загрузка больших данных...');
+
+        let url = `/api/load-progressive?start_date=${startDate}&end_date=${endDate}`;
+        if (selectedUsers.length > 0) {
+            url += `&user_ids=${selectedUsers.join(',')}`;
+        }
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+            showNotification(`✅ ${data.message}`, 'success');
+            // После загрузки показываем данные из кэша
+            await loadDataFast();
+        } else {
+            throw new Error(data.error || 'Unknown error');
+        }
+
+    } catch (error) {
+        console.error('❌ Error in progressive load:', error);
+        showNotification('❌ Ошибка прогрессивной загрузки: ' + error.message, 'error');
     }
 }
 

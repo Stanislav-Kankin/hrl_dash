@@ -83,8 +83,18 @@ async def get_main_stats(
     force_refresh: bool = False,  # 🔥 НОВЫЙ ПАРАМЕТР
     current_user: dict = Depends(get_current_user)
 ):
-    """УНИВЕРСАЛЬНЫЙ эндпоинт - с возможностью принудительного обновления"""
     try:
+        # 🔥 ПРОВЕРКА НА БОЛЬШИЕ ПЕРИОДЫ
+        start = datetime.fromisoformat(start_date)
+        end = datetime.fromisoformat(end_date)
+        total_days = (end - start).days + 1
+        
+        if total_days > 30 and force_refresh:
+            return {
+                "success": False,
+                "error": f"Период слишком большой ({total_days} дней). Максимум 30 дней для загрузки из Bitrix."
+            }
+
         user_ids_list = user_ids.split(',') if user_ids else []
         activity_types = [activity_type] if activity_type else None
         presales_users = await bitrix_service.get_presales_users()
@@ -105,7 +115,6 @@ async def get_main_stats(
             cache_analysis = await warehouse_service.get_cached_activities_for_selected_users(
                 target_user_ids, start_date, end_date, activity_types
             )
-
 
             cached_activities = cache_analysis["activities"]
             completeness = cache_analysis["completeness"]
@@ -1101,6 +1110,71 @@ async def get_super_fast_stats(
         
     except Exception as e:
         logger.error(f"❌ Error in get_super_fast_stats: {str(e)}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/load-progressive")
+async def load_progressive(
+    start_date: str,
+    end_date: str,
+    user_ids: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Прогрессивная загрузка больших периодов"""
+    try:
+        user_ids_list = user_ids.split(',') if user_ids else []
+        presales_users = await bitrix_service.get_presales_users()
+        if not presales_users:
+            return {"success": False, "error": "Список сотрудников пуст"}
+
+        user_info_map = {str(u['ID']): u for u in presales_users}
+        target_user_ids = user_ids_list if user_ids_list else list(user_info_map.keys())
+
+        start = datetime.fromisoformat(start_date)
+        end = datetime.fromisoformat(end_date)
+        total_days = (end - start).days + 1
+
+        # Разбиваем на недельные chunks
+        chunk_size = 7
+        current_start = start
+        all_activities = []
+        chunks_processed = 0
+        total_chunks = (total_days + chunk_size - 1) // chunk_size
+
+        while current_start <= end:
+            current_end = min(current_start + timedelta(days=chunk_size - 1), end)
+            chunk_start_str = current_start.strftime("%Y-%m-%d")
+            chunk_end_str = current_end.strftime("%Y-%m-%d")
+
+            logger.info(f"📅 Processing chunk {chunks_processed + 1}/{total_chunks}: {chunk_start_str} to {chunk_end_str}")
+
+            # Получаем данные для chunk
+            chunk_activities = await bitrix_service.get_activities(
+                start_date=chunk_start_str,
+                end_date=chunk_end_str,
+                user_ids=target_user_ids
+            )
+
+            if chunk_activities:
+                all_activities.extend(chunk_activities)
+                # Кэшируем каждый chunk
+                asyncio.create_task(warehouse_service.cache_activities(chunk_activities))
+
+            chunks_processed += 1
+            current_start = current_end + timedelta(days=1)
+
+            # Пауза между chunks
+            await asyncio.sleep(1)
+
+        return {
+            "success": True,
+            "message": f"Данные загружены: {total_days} дней в {chunks_processed} частях",
+            "activities_count": len(all_activities),
+            "chunks_processed": chunks_processed
+        }
+
+    except Exception as e:
+        logger.error(f"Error in progressive load: {e}")
         return {"success": False, "error": str(e)}
 
 
