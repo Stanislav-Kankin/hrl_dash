@@ -59,6 +59,56 @@ class BitrixAPI {
         }
     }
 
+    static async getEnhancedDealsStats(startDate = null, endDate = null, userIds = []) {
+        let url = '/api/deals/enhanced-stats';
+        const params = [];
+
+        if (startDate) params.push(`start_date=${encodeURIComponent(startDate)}`);
+        if (endDate) params.push(`end_date=${encodeURIComponent(endDate)}`);
+        if (userIds.length > 0) params.push(`user_ids=${userIds.join(',')}`);
+
+        if (params.length > 0) {
+            url += `?${params.join('&')}`;
+        }
+
+        const response = await this.makeRequest(url);
+        return await response.json();
+    }
+
+    // api.js - добавляем метод для тестирования
+    static async debugTestDeals(startDate = null, endDate = null, userIds = []) {
+        let url = '/api/debug/test-deals';
+        const params = [];
+
+        if (startDate) params.push(`start_date=${encodeURIComponent(startDate)}`);
+        if (endDate) params.push(`end_date=${encodeURIComponent(endDate)}`);
+        if (userIds.length > 0) params.push(`user_ids=${userIds.join(',')}`);
+
+        if (params.length > 0) {
+            url += `?${params.join('&')}`;
+        }
+
+        const response = await this.makeRequest(url);
+        return await response.json();
+    }
+
+    // Добавляем недостающий метод
+    static async debugDealsDetailed(startDate = null, endDate = null, userIds = []) {
+        let url = '/api/debug/deals-detailed';
+        const params = [];
+
+        if (startDate) params.push(`start_date=${encodeURIComponent(startDate)}`);
+        if (endDate) params.push(`end_date=${encodeURIComponent(endDate)}`);
+        if (userIds.length > 0) params.push(`user_ids=${userIds.join(',')}`);
+
+        if (params.length > 0) {
+            url += `?${params.join('&')}`;
+        }
+
+        const response = await this.makeRequest(url);
+        return await response.json();
+    }
+
     // Аутентификация
     static async getCurrentUser() {
         const response = await this.makeRequest('/api/auth/me');
